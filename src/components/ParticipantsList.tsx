@@ -6,7 +6,8 @@ import {
   AlertCircle, 
   Eye,
   Shield,
-  Sparkles
+  Sparkles,
+  Share2
 } from 'lucide-react';
 import { db, doc, writeBatch } from '../firebase';
 import { Exchange, Participant, Assignment } from '../types';
@@ -20,6 +21,7 @@ interface ParticipantsListProps {
   currentUserId: string;
   isOrganizer: boolean;
   onViewWishlist?: (participant: Participant) => void;
+  onOpenShare?: () => void;
 }
 
 export const ParticipantsList: React.FC<ParticipantsListProps> = ({
@@ -28,6 +30,7 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
   currentUserId,
   isOrganizer,
   onViewWishlist,
+  onOpenShare,
 }) => {
   const [drawing, setDrawing] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -90,30 +93,45 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
           </p>
         </div>
 
-        {isOrganizer && !isDrawn && (
-          <button
-            onClick={() => {
-              playClickSound();
-              setShowConfirmModal(true);
-            }}
-            disabled={totalCount < 2}
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-xs ${
-              totalCount < 2
-                ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600 border border-zinc-200 dark:border-zinc-700 cursor-not-allowed'
-                : 'bg-red-700 hover:bg-red-800 text-white shadow-sm'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-            <span>Draw Secret Santa Names</span>
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {onOpenShare && !isDrawn && (
+            <button
+              onClick={() => {
+                playClickSound();
+                onOpenShare();
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-semibold transition-colors cursor-pointer"
+            >
+              <Share2 className="w-3.5 h-3.5 text-zinc-500" />
+              <span>Invite Friends</span>
+            </button>
+          )}
 
-        {isDrawn && (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold">
-            <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span>Draw Complete — Secret Santas Active</span>
-          </span>
-        )}
+          {isOrganizer && !isDrawn && (
+            <button
+              onClick={() => {
+                playClickSound();
+                setShowConfirmModal(true);
+              }}
+              disabled={totalCount < 2}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-xs ${
+                totalCount < 2
+                  ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600 border border-zinc-200 dark:border-zinc-700 cursor-not-allowed'
+                  : 'bg-red-700 hover:bg-red-800 text-white shadow-sm'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <span>Draw Secret Santa Names</span>
+            </button>
+          )}
+
+          {isDrawn && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold">
+              <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Draw Complete — Secret Santas Active</span>
+            </span>
+          )}
+        </div>
       </div>
 
       {error && (

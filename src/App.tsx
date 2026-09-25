@@ -28,7 +28,8 @@ import { ParticipantsList } from './components/ParticipantsList';
 import { SecretSantaReveal } from './components/SecretSantaReveal';
 import { ViewWishlistModal } from './components/ViewWishlistModal';
 import { SettingsModal } from './components/SettingsModal';
-import { Gift, Plus, Users, Calendar, DollarSign, MapPin, Sparkles } from 'lucide-react';
+import { QuickShareModal } from './components/QuickShareModal';
+import { Gift, Plus, Users, Calendar, DollarSign, MapPin, Sparkles, Share2 } from 'lucide-react';
 import { playClickSound } from './utils/audio';
 
 export default function App() {
@@ -63,6 +64,7 @@ export default function App() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [inspectParticipant, setInspectParticipant] = useState<Participant | null>(null);
 
   // Dedicated Section View: 'match' | 'wishlist' | 'participants' | 'details'
@@ -309,6 +311,18 @@ export default function App() {
                 <span className="font-mono text-xs font-bold bg-zinc-200 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 px-2 py-0.5 rounded-md">
                   {currentExchange.code}
                 </span>
+                <button
+                  onClick={() => {
+                    playClickSound();
+                    setShowShareModal(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-700 hover:bg-red-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer ml-1"
+                  title="Share Direct Party Link & QR Code"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Share Party</span>
+                  <span className="sm:hidden">Share</span>
+                </button>
               </div>
             </div>
 
@@ -412,6 +426,7 @@ export default function App() {
                   currentUserId={user.uid}
                   isOrganizer={isOrganizer}
                   onViewWishlist={(p) => setInspectParticipant(p)}
+                  onOpenShare={() => setShowShareModal(true)}
                 />
               )}
 
@@ -421,6 +436,7 @@ export default function App() {
                   exchange={currentExchange}
                   participants={participants}
                   isOrganizer={isOrganizer}
+                  onOpenShare={() => setShowShareModal(true)}
                 />
               )}
             </div>
@@ -440,6 +456,7 @@ export default function App() {
               setCurrentExchange(newEx);
               setActiveSection('wishlist');
               saveExchangeToStorage(newEx.id);
+              setShowShareModal(true);
             }}
           />
 
@@ -462,6 +479,14 @@ export default function App() {
             budget={currentExchange?.budget || ''}
             onClose={() => setInspectParticipant(null)}
           />
+
+          {currentExchange && (
+            <QuickShareModal
+              exchange={currentExchange}
+              isOpen={showShareModal}
+              onClose={() => setShowShareModal(false)}
+            />
+          )}
 
           <SettingsModal
             user={user}

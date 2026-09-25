@@ -1,10 +1,32 @@
-import React, { useState } from 'react';
-import { Gift, ShieldCheck, Heart, UserCheck, AlertCircle } from 'lucide-react';
-import { signInWithPopup, auth, googleProvider } from '../firebase';
+import React, { useState, useEffect } from 'react';
+import { Gift, ShieldCheck, Heart, UserCheck, AlertCircle, Sparkles, PartyPopper } from 'lucide-react';
+import { signInWithPopup, auth, googleProvider, db, collection, query, where, getDocs } from '../firebase';
+import { Exchange } from '../types';
 
 export const HeroLogin: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [invitedExchange, setInvitedExchange] = useState<Exchange | null>(null);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const codeParam = urlParams.get('code');
+    if (codeParam) {
+      const fetchExchange = async () => {
+        try {
+          const snap = await getDocs(
+            query(collection(db, 'exchanges'), where('code', '==', codeParam.toUpperCase()))
+          );
+          if (!snap.empty) {
+            setInvitedExchange(snap.docs[0].data() as Exchange);
+          }
+        } catch (e) {
+          console.error('Failed to preview exchange from invite code:', e);
+        }
+      };
+      fetchExchange();
+    }
+  }, []);
 
   const handleGoogleSignIn = async () => {
     try {
@@ -43,6 +65,33 @@ export const HeroLogin: React.FC = () => {
           </p>
         </div>
 
+        {/* Invited Party Preview Banner if arriving via direct share link */}
+        {invitedExchange && (
+          <div className="mb-6 p-4 rounded-xl bg-red-50/80 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 animate-in fade-in">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-red-800 dark:text-red-300 uppercase tracking-wider mb-1">
+              <PartyPopper className="w-3.5 h-3.5 text-red-700 dark:text-red-400" />
+              <span>You're Invited!</span>
+            </div>
+            <h2 className="text-sm font-bold text-zinc-900 dark:text-white">
+              {invitedExchange.title}
+            </h2>
+            <div className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <span>Budget: <strong className="text-emerald-700 dark:text-emerald-400 font-semibold">{invitedExchange.budget}</strong></span>
+              <span>•</span>
+              <span>{invitedExchange.exchangeDate}</span>
+              {invitedExchange.location && (
+                <>
+                  <span>•</span>
+                  <span>{invitedExchange.location}</span>
+                </>
+              )}
+            </div>
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-2">
+              Sign in below to enter the exchange and fill out your wishlist.
+            </p>
+          </div>
+        )}
+
         {error && (
           <div className="mb-5 p-3 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-900 text-red-800 dark:text-red-300 text-xs flex items-start gap-2">
             <AlertCircle className="w-4 h-4 shrink-0 text-red-600 dark:text-red-400 mt-0.5" />
@@ -78,7 +127,7 @@ export const HeroLogin: React.FC = () => {
               />
             </svg>
           )}
-          <span>Continue with Google</span>
+          <span>{invitedExchange ? 'Sign in to Join Exchange' : 'Continue with Google'}</span>
         </button>
 
         {/* Feature summary list */}

@@ -1,18 +1,22 @@
 import React, { useState } from 'react';
-import { Calendar, DollarSign, MapPin, Copy, Check, Users, Sparkles } from 'lucide-react';
+import { Calendar, DollarSign, MapPin, Copy, Check, Users, Sparkles, Share2 } from 'lucide-react';
 import { Exchange, Participant, getCurrencySymbol } from '../types';
 import { CountdownTimer } from './CountdownTimer';
+import { formatPartyInviteMessage } from '../utils/share';
+import { playChimeSound, playClickSound } from '../utils/audio';
 
 interface ExchangeHeaderProps {
   exchange: Exchange;
   participants: Participant[];
   isOrganizer: boolean;
+  onOpenShare?: () => void;
 }
 
 export const ExchangeHeader: React.FC<ExchangeHeaderProps> = ({
   exchange,
   participants,
   isOrganizer,
+  onOpenShare,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -21,8 +25,9 @@ export const ExchangeHeader: React.FC<ExchangeHeaderProps> = ({
   const currencySym = getCurrencySymbol(exchange.currency);
 
   const handleCopyInvite = () => {
-    const inviteText = `🎄 Secret Santa Exchange: "${exchange.title}"\n💰 Budget: ${exchange.budget}\n📅 When: ${exchange.exchangeDate} at ${exchange.location}\n🎁 Room Code: ${exchange.code}\nJoin: ${window.location.origin}?code=${exchange.code}`;
+    const inviteText = formatPartyInviteMessage(exchange);
     navigator.clipboard.writeText(inviteText);
+    playChimeSound();
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -97,22 +102,37 @@ export const ExchangeHeader: React.FC<ExchangeHeaderProps> = ({
             </span>
           </div>
 
-          <button
-            onClick={handleCopyInvite}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium transition-colors cursor-pointer"
-          >
-            {copied ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="text-emerald-700 dark:text-emerald-400 font-medium">Copied!</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5 text-zinc-500" />
-                <span>Copy Invite</span>
-              </>
+          <div className="flex items-center gap-2">
+            {onOpenShare && (
+              <button
+                onClick={() => {
+                  playClickSound();
+                  onOpenShare();
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Quick Share</span>
+              </button>
             )}
-          </button>
+
+            <button
+              onClick={handleCopyInvite}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium transition-colors cursor-pointer"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="text-emerald-700 dark:text-emerald-400 font-medium">Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 text-zinc-500" />
+                  <span>Copy Text</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
