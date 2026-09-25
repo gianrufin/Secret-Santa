@@ -2,16 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { Gift, ShieldCheck, Heart, UserCheck, AlertCircle, Sparkles, PartyPopper } from 'lucide-react';
 import { signInWithPopup, auth, googleProvider, db, collection, query, where, getDocs } from '../firebase';
 import { Exchange } from '../types';
+import { InviteBannerSkeleton } from './SkeletonLoader';
 
 export const HeroLogin: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [invitedExchange, setInvitedExchange] = useState<Exchange | null>(null);
+  const [checkingInvite, setCheckingInvite] = useState(false);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const codeParam = urlParams.get('code');
     if (codeParam) {
+      setCheckingInvite(true);
       const fetchExchange = async () => {
         try {
           const snap = await getDocs(
@@ -22,6 +25,8 @@ export const HeroLogin: React.FC = () => {
           }
         } catch (e) {
           console.error('Failed to preview exchange from invite code:', e);
+        } finally {
+          setCheckingInvite(false);
         }
       };
       fetchExchange();
@@ -66,7 +71,9 @@ export const HeroLogin: React.FC = () => {
         </div>
 
         {/* Invited Party Preview Banner if arriving via direct share link */}
-        {invitedExchange && (
+        {checkingInvite ? (
+          <InviteBannerSkeleton />
+        ) : invitedExchange ? (
           <div className="mb-6 p-4 rounded-xl bg-red-50/80 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 animate-in fade-in">
             <div className="flex items-center gap-1.5 text-[11px] font-bold text-red-800 dark:text-red-300 uppercase tracking-wider mb-1">
               <PartyPopper className="w-3.5 h-3.5 text-red-700 dark:text-red-400" />
@@ -78,7 +85,15 @@ export const HeroLogin: React.FC = () => {
             <div className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
               <span>Budget: <strong className="text-emerald-700 dark:text-emerald-400 font-semibold">{invitedExchange.budget}</strong></span>
               <span>•</span>
-              <span>{invitedExchange.exchangeDate}</span>
+              <span>Event: {invitedExchange.exchangeDate}</span>
+              {invitedExchange.registrationDeadline && (
+                <>
+                  <span>•</span>
+                  <span className="text-amber-700 dark:text-amber-400 font-medium">
+                    Lock: {invitedExchange.registrationDeadline}
+                  </span>
+                </>
+              )}
               {invitedExchange.location && (
                 <>
                   <span>•</span>
@@ -90,7 +105,7 @@ export const HeroLogin: React.FC = () => {
               Sign in below to enter the exchange and fill out your wishlist.
             </p>
           </div>
-        )}
+        ) : null}
 
         {error && (
           <div className="mb-5 p-3 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-900 text-red-800 dark:text-red-300 text-xs flex items-start gap-2">

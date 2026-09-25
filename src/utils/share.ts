@@ -23,5 +23,6 @@ export function getPartyShareUrl(code: string): string {
  */
 export function formatPartyInviteMessage(exchange: Exchange): string {
   const link = getPartyShareUrl(exchange.code);
-  return `🎄 Secret Santa Gift Exchange: "${exchange.title}"\n💰 Budget: ${exchange.budget}\n📅 When: ${exchange.exchangeDate}\n📍 Where: ${exchange.location}\n🎁 Room Code: ${exchange.code}\n\n👉 Join directly using this link:\n${link}`;
+  const deadlineNote = exchange.registrationDeadline ? `\n⏳ Wishlist Lock Deadline: ${exchange.registrationDeadline}` : '';
+  return `🎄 Secret Santa Gift Exchange: "${exchange.title}"\n💰 Budget: ${exchange.budget}\n📅 Event Date: ${exchange.exchangeDate}${deadlineNote}\n📍 Where: ${exchange.location}\n🎁 Room Code: ${exchange.code}\n\n👉 Join directly using this link:\n${link}`;
 }

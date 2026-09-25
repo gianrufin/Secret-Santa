@@ -7,9 +7,11 @@ import {
   Eye,
   Shield,
   Sparkles,
-  Share2
+  Share2,
+  LogOut,
+  UserMinus
 } from 'lucide-react';
-import { db, doc, writeBatch } from '../firebase';
+import { db, doc, writeBatch, deleteDoc } from '../firebase';
 import { Exchange, Participant, Assignment } from '../types';
 import { generateSecretSantaDraw } from '../utils/santaDraw';
 import { fireHolidayConfetti } from '../utils/confetti';
@@ -22,6 +24,7 @@ interface ParticipantsListProps {
   isOrganizer: boolean;
   onViewWishlist?: (participant: Participant) => void;
   onOpenShare?: () => void;
+  onLeaveExchange?: (exchangeId: string) => void;
 }
 
 export const ParticipantsList: React.FC<ParticipantsListProps> = ({
@@ -31,15 +34,64 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
   isOrganizer,
   onViewWishlist,
   onOpenShare,
+  onLeaveExchange,
 }) => {
   const [drawing, setDrawing] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [participantToRemove, setParticipantToRemove] = useState<Participant | null>(null);
+  const [confirmLeaveSelf, setConfirmLeaveSelf] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const readyCount = participants.filter((p) => p.isWishlistReady).length;
   const totalCount = participants.length;
   const isDrawn = exchange.status === 'drawn';
   const allReady = totalCount >= 2 && readyCount === totalCount;
+
+  const handleConfirmRemoveParticipant = async () => {
+    if (!participantToRemove) return;
+    try {
+      setActionLoading(true);
+      setError(null);
+      await deleteDoc(doc(db, 'exchanges', exchange.id, 'participants', participantToRemove.userId));
+      try {
+        await deleteDoc(doc(db, 'exchanges', exchange.id, 'assignments', participantToRemove.userId));
+      } catch (e) {
+        // ignore
+      }
+      playClickSound();
+      setParticipantToRemove(null);
+    } catch (err: any) {
+      console.error('Failed to remove participant:', err);
+      setError(err.message || 'Failed to remove participant.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleConfirmLeaveSelf = async () => {
+    try {
+      setActionLoading(true);
+      setError(null);
+      if (onLeaveExchange) {
+        await onLeaveExchange(exchange.id);
+      } else {
+        await deleteDoc(doc(db, 'exchanges', exchange.id, 'participants', currentUserId));
+        try {
+          await deleteDoc(doc(db, 'exchanges', exchange.id, 'assignments', currentUserId));
+        } catch (e) {
+          // ignore
+        }
+      }
+      playClickSound();
+      setConfirmLeaveSelf(false);
+    } catch (err: any) {
+      console.error('Failed to leave exchange:', err);
+      setError(err.message || 'Failed to leave exchange.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const handleExecuteDraw = async () => {
     if (participants.length < 2) {
@@ -210,18 +262,44 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
                   </td>
 
                   <td className="px-4 py-3 whitespace-nowrap text-right">
-                    {onViewWishlist && (
-                      <button
-                        onClick={() => {
-                          playClickSound();
-                          onViewWishlist(person);
-                        }}
-                        className="inline-flex items-center gap-1 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
-                      >
-                        <Eye className="w-3 h-3" />
-                        <span>View List</span>
-                      </button>
-                    )}
+                    <div className="flex items-center justify-end gap-1.5">
+                      {onViewWishlist && (
+                        <button
+                          onClick={() => {
+                            playClickSound();
+                            onViewWishlist(person);
+                          }}
+                          className="inline-flex items-center gap-1 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                        >
+                          <Eye className="w-3 h-3" />
+                          <span>View List</span>
+                        </button>
+                      )}
+
+                      {/* Participant's own Leave button */}
+                      {isCurrentUser && (
+                        <button
+                          onClick={() => setConfirmLeaveSelf(true)}
+                          className="inline-flex items-center gap-1 text-red-600 dark:text-red-400 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 border border-red-200 dark:border-red-900/60 px-2 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                          title="Leave this gift exchange"
+                        >
+                          <LogOut className="w-3 h-3" />
+                          <span>Leave</span>
+                        </button>
+                      )}
+
+                      {/* Organizer Remove participant button (before draw) */}
+                      {isOrganizer && !isDrawn && !isCurrentUser && (
+                        <button
+                          onClick={() => setParticipantToRemove(person)}
+                          className="inline-flex items-center gap-1 text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 border border-zinc-200 dark:border-zinc-700 hover:border-red-300 dark:hover:border-red-800 px-2 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                          title={`Remove ${person.displayName} from this exchange`}
+                        >
+                          <UserMinus className="w-3 h-3" />
+                          <span className="hidden sm:inline">Remove</span>
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -230,7 +308,7 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
         </table>
       </div>
 
-      {/* Confirmation Modal */}
+      {/* Confirmation Modal - Draw */}
       {showConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
           <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-xl max-w-sm w-full space-y-4">
@@ -263,6 +341,78 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
                 className="px-4 py-1.5 rounded-lg bg-red-700 hover:bg-red-800 text-white text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
               >
                 {drawing ? 'Drawing...' : 'Confirm Draw'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal - User Leaving Exchange */}
+      {confirmLeaveSelf && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-xl max-w-sm w-full space-y-4">
+            <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400 flex items-center justify-center">
+              <LogOut className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
+                Leave this Gift Exchange?
+              </h3>
+              <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 leading-relaxed">
+                Your name, wishlist, and participation will be removed from &quot;{exchange.title}&quot;. You will not give or receive gifts in this exchange.
+              </p>
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmLeaveSelf(false)}
+                className="px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-xs font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={handleConfirmLeaveSelf}
+                className="px-4 py-1.5 rounded-lg bg-red-700 hover:bg-red-800 text-white text-xs font-semibold cursor-pointer disabled:opacity-50"
+              >
+                {actionLoading ? 'Leaving...' : 'Yes, Leave Exchange'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal - Organizer Removing Participant */}
+      {participantToRemove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-xl max-w-sm w-full space-y-4">
+            <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400 flex items-center justify-center">
+              <UserMinus className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
+                Remove {participantToRemove.displayName}?
+              </h3>
+              <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 leading-relaxed">
+                This participant and their wishlist will be permanently removed from this gift exchange roster.
+              </p>
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setParticipantToRemove(null)}
+                className="px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-xs font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={handleConfirmRemoveParticipant}
+                className="px-4 py-1.5 rounded-lg bg-red-700 hover:bg-red-800 text-white text-xs font-semibold cursor-pointer disabled:opacity-50"
+              >
+                {actionLoading ? 'Removing...' : 'Remove Participant'}
               </button>
             </div>
           </div>

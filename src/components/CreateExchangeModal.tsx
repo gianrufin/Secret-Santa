@@ -20,6 +20,7 @@ export const CreateExchangeModal: React.FC<CreateExchangeModalProps> = ({
   const [currency, setCurrency] = useState('PHP'); // Default to PHP as requested
   const [budget, setBudget] = useState('₱1,000');
   const [exchangeDate, setExchangeDate] = useState('2026-12-25');
+  const [registrationDeadline, setRegistrationDeadline] = useState('2026-12-20');
   const [location, setLocation] = useState('In-Person Gathering');
   const [description, setDescription] = useState('Bring a wrapped gift with a recipient tag for our in-person exchange.');
   const [submitting, setSubmitting] = useState(false);
@@ -61,6 +62,7 @@ export const CreateExchangeModal: React.FC<CreateExchangeModalProps> = ({
         currency,
         budget: budget.trim(),
         exchangeDate,
+        registrationDeadline: registrationDeadline || undefined,
         location: location.trim(),
         description: description.trim(),
         organizerId: user.uid,
@@ -212,7 +214,7 @@ export const CreateExchangeModal: React.FC<CreateExchangeModalProps> = ({
             <div>
               <label className="block font-medium text-zinc-700 dark:text-zinc-300 mb-1 flex items-center gap-1">
                 <Calendar className="w-3 h-3 text-zinc-400" />
-                <span>Exchange Date</span>
+                <span>Exchange Event Date</span>
               </label>
               <input
                 type="date"
@@ -225,17 +227,33 @@ export const CreateExchangeModal: React.FC<CreateExchangeModalProps> = ({
 
             <div>
               <label className="block font-medium text-zinc-700 dark:text-zinc-300 mb-1 flex items-center gap-1">
-                <MapPin className="w-3 h-3 text-zinc-400" />
-                <span>In-Person Location</span>
+                <Calendar className="w-3 h-3 text-amber-500" />
+                <span>Wishlist Lock Deadline</span>
               </label>
               <input
-                type="text"
-                placeholder="e.g. Kuya's House / Restaurant"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                type="date"
+                value={registrationDeadline}
+                onChange={(e) => setRegistrationDeadline(e.target.value)}
+                className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-400"
               />
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400 block mt-0.5">
+                Participants must finalize & lock wishlists before this date.
+              </span>
             </div>
+          </div>
+
+          <div>
+            <label className="block font-medium text-zinc-700 dark:text-zinc-300 mb-1 flex items-center gap-1">
+              <MapPin className="w-3 h-3 text-zinc-400" />
+              <span>In-Person Location</span>
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. Kuya's House / Restaurant"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400"
+            />
           </div>
 
           <div>

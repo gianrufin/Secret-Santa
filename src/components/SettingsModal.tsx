@@ -29,6 +29,7 @@ interface SettingsModalProps {
   onToggleDarkMode: (val: boolean) => void;
   onExchangeUpdated: (updated: Exchange) => void;
   onExchangeDeleted: (exchangeId: string) => void;
+  onLeaveExchange?: (exchangeId: string) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -40,6 +41,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onToggleDarkMode,
   onExchangeUpdated,
   onExchangeDeleted,
+  onLeaveExchange,
 }) => {
   const [soundOn, setSoundOn] = useState(getSoundEnabled());
   const [displayName, setDisplayName] = useState(user.displayName || '');
@@ -50,9 +52,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [budget, setBudget] = useState(currentExchange?.budget || '₱1,000');
   const [currency, setCurrency] = useState(currentExchange?.currency || 'PHP');
   const [exchangeDate, setExchangeDate] = useState(currentExchange?.exchangeDate || '2026-12-25');
+  const [registrationDeadline, setRegistrationDeadline] = useState(currentExchange?.registrationDeadline || '');
   const [location, setLocation] = useState(currentExchange?.location || 'In-Person Gathering');
   const [savingExchange, setSavingExchange] = useState(false);
   const [confirmDeleteExchange, setConfirmDeleteExchange] = useState(false);
+  const [confirmLeaveExchange, setConfirmLeaveExchange] = useState(false);
+  const [leavingExchange, setLeavingExchange] = useState(false);
   const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
   const [confirmResetDraw, setConfirmResetDraw] = useState(false);
 
@@ -92,6 +97,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         budget: budget.trim(),
         currency,
         exchangeDate,
+        registrationDeadline: registrationDeadline || undefined,
         location: location.trim(),
       };
       await updateDoc(exRef, updated);
@@ -131,10 +137,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  const handleLeaveCurrentExchange = async () => {
+    if (!currentExchange) return;
+    try {
+      setLeavingExchange(true);
+      await deleteDoc(doc(db, 'exchanges', currentExchange.id, 'participants', user.uid));
+      try {
+        await deleteDoc(doc(db, 'exchanges', currentExchange.id, 'assignments', user.uid));
+      } catch (e) {
+        // ignore
+      }
+      const storageKey = `joined_exchanges_${user.uid}`;
+      const saved: string[] = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      const filtered = saved.filter((id) => id !== currentExchange.id);
+      localStorage.setItem(storageKey, JSON.stringify(filtered));
+
+      if (onLeaveExchange) {
+        onLeaveExchange(currentExchange.id);
+      }
+      playClickSound();
+      onClose();
+    } catch (e: any) {
+      console.error('Failed to leave exchange:', e);
+      alert(e.message || 'Failed to leave exchange.');
+    } finally {
+      setLeavingExchange(false);
+      setConfirmLeaveExchange(false);
+    }
+  };
+
   const handleDeleteAccount = async () => {
     try {
       if (currentExchange) {
         await deleteDoc(doc(db, 'exchanges', currentExchange.id, 'participants', user.uid));
+        try {
+          await deleteDoc(doc(db, 'exchanges', currentExchange.id, 'assignments', user.uid));
+        } catch (e) {
+          // ignore
+        }
+        const storageKey = `joined_exchanges_${user.uid}`;
+        const saved: string[] = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        const filtered = saved.filter((id) => id !== currentExchange.id);
+        localStorage.setItem(storageKey, JSON.stringify(filtered));
+
+        if (onLeaveExchange) {
+          onLeaveExchange(currentExchange.id);
+        }
       }
       localStorage.clear();
       await signOut(auth);
@@ -275,7 +323,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-zinc-700 dark:text-zinc-300 font-medium mb-1">
-                    Exchange Date
+                    Exchange Event Date
                   </label>
                   <input
                     type="date"
@@ -287,15 +335,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 <div>
                   <label className="block text-zinc-700 dark:text-zinc-300 font-medium mb-1">
-                    In-Person Location
+                    Wishlist Lock Deadline
                   </label>
                   <input
-                    type="text"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
+                    type="date"
+                    value={registrationDeadline}
+                    onChange={(e) => setRegistrationDeadline(e.target.value)}
                     className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-900 dark:text-zinc-100"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-zinc-700 dark:text-zinc-300 font-medium mb-1">
+                  In-Person Location
+                </label>
+                <input
+                  type="text"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-900 dark:text-zinc-100"
+                />
               </div>
 
               <div className="flex justify-between items-center pt-2">
@@ -386,13 +446,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             )}
 
+            {/* Leave Current Exchange (Roster & Wishlist removal) */}
+            {currentExchange && (
+              <div>
+                {!confirmLeaveExchange ? (
+                  <button
+                    onClick={() => setConfirmLeaveExchange(true)}
+                    className="w-full text-left p-2.5 rounded-lg border border-amber-200 dark:border-amber-900/50 hover:bg-amber-50 dark:hover:bg-amber-950/30 text-amber-800 dark:text-amber-300 transition-colors flex items-center justify-between cursor-pointer"
+                  >
+                    <span>Leave &quot;{currentExchange.title}&quot;</span>
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 space-y-2">
+                    <p className="font-semibold text-amber-900 dark:text-amber-200">
+                      Leave &quot;{currentExchange.title}&quot;?
+                    </p>
+                    <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                      This will remove you from this exchange roster, clear your wishlist for this party, and you will not receive or give gifts in this exchange.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleLeaveCurrentExchange}
+                        disabled={leavingExchange}
+                        className="px-2.5 py-1 rounded bg-amber-700 hover:bg-amber-800 text-white font-medium cursor-pointer disabled:opacity-50"
+                      >
+                        {leavingExchange ? 'Leaving...' : 'Yes, Leave Exchange'}
+                      </button>
+                      <button
+                        onClick={() => setConfirmLeaveExchange(false)}
+                        className="px-2.5 py-1 rounded border border-amber-300 text-amber-700 dark:text-amber-300 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div>
               {!confirmDeleteAccount ? (
                 <button
                   onClick={() => setConfirmDeleteAccount(true)}
                   className="w-full text-left p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400 transition-colors flex items-center justify-between cursor-pointer"
                 >
-                  <span>Leave & Clear Local Data</span>
+                  <span>Leave Party & Sign Out</span>
                   <LogOut className="w-3.5 h-3.5" />
                 </button>
               ) : (
@@ -401,14 +500,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     Leave and sign out?
                   </p>
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                    This will remove you from this exchange roster and sign you out.
+                    This will remove you from this exchange roster, clear your wishlist data, and sign you out of your account.
                   </p>
                   <div className="flex gap-2">
                     <button
                       onClick={handleDeleteAccount}
                       className="px-2.5 py-1 rounded bg-red-700 text-white font-medium hover:bg-red-800 cursor-pointer"
                     >
-                      Confirm Leave
+                      Confirm Leave & Sign Out
                     </button>
                     <button
                       onClick={() => setConfirmDeleteAccount(false)}

@@ -33,6 +33,7 @@ export interface Exchange {
   currency: string; // e.g. 'PHP', 'USD', 'EUR', 'GBP'
   budget: string;
   exchangeDate: string;
+  registrationDeadline?: string; // date/time by which participants must register & finalize wishlists
   location: string;
   description?: string;
   organizerId: string;

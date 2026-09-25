@@ -9,6 +9,8 @@ import {
   auth, 
   db, 
   doc, 
+  getDoc,
+  deleteDoc,
   onSnapshot, 
   collection, 
   query, 
@@ -29,12 +31,14 @@ import { SecretSantaReveal } from './components/SecretSantaReveal';
 import { ViewWishlistModal } from './components/ViewWishlistModal';
 import { SettingsModal } from './components/SettingsModal';
 import { QuickShareModal } from './components/QuickShareModal';
-import { Gift, Plus, Users, Calendar, DollarSign, MapPin, Sparkles, Share2 } from 'lucide-react';
+import { AppSkeleton, WishlistSkeleton, ParticipantsSkeleton } from './components/SkeletonLoader';
+import { Gift, Plus, Users, Calendar, DollarSign, MapPin, Sparkles, Share2, UserPlus } from 'lucide-react';
 import { playClickSound } from './utils/audio';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [exchangesLoading, setExchangesLoading] = useState(false);
 
   // Theme state
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -89,6 +93,7 @@ export default function App() {
 
     const loadExchanges = async () => {
       try {
+        setExchangesLoading(true);
         const qOrg = query(collection(db, 'exchanges'), where('organizerId', '==', user.uid));
         const orgSnaps = await getDocs(qOrg);
         const orgList = orgSnaps.docs.map((d) => d.data() as Exchange);
@@ -114,14 +119,39 @@ export default function App() {
         const codeParam = urlParams.get('code');
         if (codeParam) {
           const matchCode = combined.find((ex) => ex.code.toUpperCase() === codeParam.toUpperCase());
+          let foundEx: Exchange | null = null;
           if (matchCode) {
-            setCurrentExchange(matchCode);
+            foundEx = matchCode;
           } else {
             const snap = await getDocs(query(collection(db, 'exchanges'), where('code', '==', codeParam.toUpperCase())));
             if (!snap.empty) {
-              const exData = snap.docs[0].data() as Exchange;
-              setCurrentExchange(exData);
-              saveExchangeToStorage(exData.id);
+              foundEx = snap.docs[0].data() as Exchange;
+              saveExchangeToStorage(foundEx.id);
+            }
+          }
+          if (foundEx) {
+            setCurrentExchange(foundEx);
+            // If opening directly with an invite code, join once if not yet a participant
+            try {
+              const partRef = doc(db, 'exchanges', foundEx.id, 'participants', user.uid);
+              const pSnap = await getDoc(partRef);
+              if (!pSnap.exists()) {
+                const newPart: Participant = {
+                  id: user.uid,
+                  userId: user.uid,
+                  displayName: user.displayName || user.email?.split('@')[0] || 'Guest',
+                  email: user.email || '',
+                  photoURL: user.photoURL || undefined,
+                  isOrganizer: foundEx.organizerId === user.uid,
+                  isWishlistReady: false,
+                  joinedAt: new Date().toISOString(),
+                  preferences: { likes: '', dislikes: '', clothingSize: '', notes: '' },
+                  wishlist: [],
+                };
+                await setDoc(partRef, newPart);
+              }
+            } catch (err) {
+              console.error('Error auto-registering via invite code:', err);
             }
           }
         } else if (combined.length > 0 && !currentExchange) {
@@ -129,6 +159,8 @@ export default function App() {
         }
       } catch (err) {
         console.error('Failed to load exchanges:', err);
+      } finally {
+        setExchangesLoading(false);
       }
     };
 
@@ -172,22 +204,6 @@ export default function App() {
         const list: Participant[] = [];
         snapshot.forEach((d) => list.push(d.data() as Participant));
         setParticipants(list);
-
-        if (user && !list.some((p) => p.userId === user.uid)) {
-          const newPart: Participant = {
-            id: user.uid,
-            userId: user.uid,
-            displayName: user.displayName || user.email?.split('@')[0] || 'Guest',
-            email: user.email || '',
-            photoURL: user.photoURL || undefined,
-            isOrganizer: currentExchange.organizerId === user.uid,
-            isWishlistReady: false,
-            joinedAt: new Date().toISOString(),
-            preferences: { likes: '', dislikes: '', clothingSize: '', notes: '' },
-            wishlist: [],
-          };
-          setDoc(doc(db, 'exchanges', currentExchange.id, 'participants', user.uid), newPart);
-        }
       }
     );
 
@@ -217,6 +233,67 @@ export default function App() {
     };
   }, [currentExchange?.id, user?.uid]);
 
+  const handleLeaveExchange = async (exchangeId: string) => {
+    if (!user) return;
+    try {
+      // 1. Remove participant document from Firestore
+      await deleteDoc(doc(db, 'exchanges', exchangeId, 'participants', user.uid));
+      
+      // 2. Remove assignment doc if it exists
+      try {
+        await deleteDoc(doc(db, 'exchanges', exchangeId, 'assignments', user.uid));
+      } catch (e) {
+        // ignore
+      }
+
+      // 3. Remove exchange ID from user's joined_exchanges in localStorage
+      const storageKey = `joined_exchanges_${user.uid}`;
+      const saved: string[] = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      const filtered = saved.filter((id) => id !== exchangeId);
+      localStorage.setItem(storageKey, JSON.stringify(filtered));
+
+      // 4. Update user exchanges state
+      const remaining = userExchanges.filter((ex) => ex.id !== exchangeId);
+      setUserExchanges(remaining);
+
+      // 5. Update current exchange selection
+      if (currentExchange?.id === exchangeId) {
+        if (remaining.length > 0) {
+          setCurrentExchange(remaining[0]);
+          setActiveSection(remaining[0].status === 'drawn' ? 'match' : 'wishlist');
+        } else {
+          setCurrentExchange(null);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to leave exchange:', err);
+    }
+  };
+
+  const handleJoinCurrentExchange = async () => {
+    if (!user || !currentExchange) return;
+    try {
+      const partRef = doc(db, 'exchanges', currentExchange.id, 'participants', user.uid);
+      const newPart: Participant = {
+        id: user.uid,
+        userId: user.uid,
+        displayName: user.displayName || user.email?.split('@')[0] || 'Guest',
+        email: user.email || '',
+        photoURL: user.photoURL || undefined,
+        isOrganizer: currentExchange.organizerId === user.uid,
+        isWishlistReady: false,
+        joinedAt: new Date().toISOString(),
+        preferences: { likes: '', dislikes: '', clothingSize: '', notes: '' },
+        wishlist: [],
+      };
+      await setDoc(partRef, newPart);
+      saveExchangeToStorage(currentExchange.id);
+      playClickSound();
+    } catch (err) {
+      console.error('Failed to join exchange:', err);
+    }
+  };
+
   const currentParticipant = participants.find((p) => p.userId === user?.uid);
   const isOrganizer = currentExchange?.organizerId === user?.uid;
   const isDrawn = currentExchange?.status === 'drawn';
@@ -226,17 +303,8 @@ export default function App() {
     ? participants.find((p) => p.userId === myAssignment.recipientId) || null
     : null;
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center text-zinc-600 dark:text-zinc-400">
-        <div className="flex flex-col items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-red-800 text-white flex items-center justify-center animate-pulse">
-            <Gift className="w-5 h-5" />
-          </div>
-          <span className="text-xs font-medium">Loading Secret Santa...</span>
-        </div>
-      </div>
-    );
+  if (authLoading || (user && exchangesLoading && !currentExchange)) {
+    return <AppSkeleton />;
   }
 
   return (
@@ -300,7 +368,15 @@ export default function App() {
                 <div className="flex flex-wrap items-center gap-2.5 text-xs text-zinc-500 dark:text-zinc-400 mt-1">
                   <span>Budget: <strong className="text-emerald-700 dark:text-emerald-400 font-bold">{currentExchange.budget}</strong></span>
                   <span>•</span>
-                  <span>{currentExchange.exchangeDate}</span>
+                  <span>Event: {currentExchange.exchangeDate}</span>
+                  {currentExchange.registrationDeadline && (
+                    <>
+                      <span>•</span>
+                      <span className="text-amber-700 dark:text-amber-400 font-medium">
+                        Lock: {currentExchange.registrationDeadline}
+                      </span>
+                    </>
+                  )}
                   <span>•</span>
                   <span>{currentExchange.location}</span>
                 </div>
@@ -408,26 +484,55 @@ export default function App() {
               )}
 
               {/* Section 2: My Wishlist */}
-              {activeSection === 'wishlist' && currentParticipant && (
-                <WishlistEditor
-                  exchangeId={currentExchange.id}
-                  participant={currentParticipant}
-                  isDrawn={isDrawn}
-                  budget={currentExchange.budget}
-                  currency={currentExchange.currency}
-                />
+              {activeSection === 'wishlist' && (
+                currentParticipant ? (
+                  <WishlistEditor
+                    exchangeId={currentExchange.id}
+                    participant={currentParticipant}
+                    isDrawn={isDrawn}
+                    budget={currentExchange.budget}
+                    currency={currentExchange.currency}
+                    registrationDeadline={currentExchange.registrationDeadline}
+                  />
+                ) : (
+                  <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-8 text-center space-y-4">
+                    <div className="w-12 h-12 mx-auto rounded-full bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-400 flex items-center justify-center">
+                      <Users className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
+                        You are not participating in this exchange
+                      </h3>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-sm mx-auto mt-1 leading-relaxed">
+                        You have left or are previewing &quot;{currentExchange.title}&quot;. Join to add your wishlist items and take part in the Secret Santa gift exchange.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleJoinCurrentExchange}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-700 hover:bg-red-800 text-white font-semibold text-xs shadow-xs transition-colors cursor-pointer"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span>Join This Party</span>
+                    </button>
+                  </div>
+                )
               )}
 
               {/* Section 3: Participants */}
               {activeSection === 'participants' && (
-                <ParticipantsList
-                  exchange={currentExchange}
-                  participants={participants}
-                  currentUserId={user.uid}
-                  isOrganizer={isOrganizer}
-                  onViewWishlist={(p) => setInspectParticipant(p)}
-                  onOpenShare={() => setShowShareModal(true)}
-                />
+                participants.length === 0 ? (
+                  <ParticipantsSkeleton />
+                ) : (
+                  <ParticipantsList
+                    exchange={currentExchange}
+                    participants={participants}
+                    currentUserId={user.uid}
+                    isOrganizer={isOrganizer}
+                    onViewWishlist={(p) => setInspectParticipant(p)}
+                    onOpenShare={() => setShowShareModal(true)}
+                    onLeaveExchange={handleLeaveExchange}
+                  />
+                )
               )}
 
               {/* Section 4: Event Details & Countdown */}
@@ -504,6 +609,7 @@ export default function App() {
               setUserExchanges(remaining);
               setCurrentExchange(remaining.length > 0 ? remaining[0] : null);
             }}
+            onLeaveExchange={handleLeaveExchange}
           />
         </>
       )}

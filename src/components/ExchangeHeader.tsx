@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, DollarSign, MapPin, Copy, Check, Users, Sparkles, Share2 } from 'lucide-react';
+import { Calendar, DollarSign, MapPin, Copy, Check, Users, Sparkles, Share2, Lock } from 'lucide-react';
 import { Exchange, Participant, getCurrencySymbol } from '../types';
 import { CountdownTimer } from './CountdownTimer';
 import { formatPartyInviteMessage } from '../utils/share';
@@ -79,6 +79,13 @@ export const ExchangeHeader: React.FC<ExchangeHeaderProps> = ({
               <span>{exchange.exchangeDate}</span>
             </div>
 
+            {exchange.registrationDeadline && (
+              <div className="inline-flex items-center gap-1.5 text-amber-800 dark:text-amber-300 font-medium">
+                <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                <span>Wishlists Lock: <strong>{exchange.registrationDeadline}</strong></span>
+              </div>
+            )}
+
             <div className="inline-flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-zinc-400" />
               <span>{exchange.location}</span>
@@ -137,8 +144,18 @@ export const ExchangeHeader: React.FC<ExchangeHeaderProps> = ({
       </div>
 
       {/* Countdown Clock banner */}
-      <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <CountdownTimer targetDate={exchange.exchangeDate} />
+      <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        {exchange.registrationDeadline && !isDrawn && (
+          <CountdownTimer 
+            targetDate={exchange.registrationDeadline} 
+            label="Wishlist Lock in:" 
+            targetTime="23:59:59" 
+          />
+        )}
+        <CountdownTimer 
+          targetDate={exchange.exchangeDate} 
+          label="Party Event in:" 
+        />
       </div>
     </div>
   );
