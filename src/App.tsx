@@ -63,6 +63,7 @@ export default function App() {
   const [currentExchange, setCurrentExchange] = useState<Exchange | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [myAssignment, setMyAssignment] = useState<Assignment | null>(null);
+  const [santaNotesCount, setSantaNotesCount] = useState<number>(0);
 
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -221,6 +222,7 @@ export default function App() {
     );
 
     let unsubAssignment = () => {};
+    let unsubSantaNotes = () => {};
     if (user) {
       unsubAssignment = onSnapshot(
         doc(db, 'exchanges', currentExchange.id, 'assignments', user.uid),
@@ -237,12 +239,27 @@ export default function App() {
           setMyAssignment(null);
         }
       );
+
+      const qNotes = query(
+        collection(db, 'exchanges', currentExchange.id, 'messages'),
+        where('recipientId', '==', user.uid)
+      );
+      unsubSantaNotes = onSnapshot(
+        qNotes,
+        (snap) => {
+          setSantaNotesCount(snap.size);
+        },
+        (err) => {
+          console.error('Error listening to Santa notes:', err);
+        }
+      );
     }
 
     return () => {
       unsubExchange();
       unsubParticipants();
       unsubAssignment();
+      unsubSantaNotes();
     };
   }, [currentExchange?.id, user?.uid]);
 
@@ -356,7 +373,9 @@ export default function App() {
   const currencySym = getCurrencySymbol(currentExchange?.currency);
 
   const recipientParticipant = myAssignment
-    ? participants.find((p) => p.userId === myAssignment.recipientId) || null
+    ? participants.find(
+        (p) => (p.userId && p.userId === myAssignment.recipientId) || p.id === myAssignment.recipientId
+      ) || null
     : null;
 
   if (authLoading || (user && exchangesLoading && !currentExchange)) {
@@ -466,13 +485,18 @@ export default function App() {
                     playClickSound();
                     setActiveSection('match');
                   }}
-                  className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
+                  className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap cursor-pointer inline-flex items-center gap-1.5 ${
                     activeSection === 'match'
                       ? 'border-red-700 text-red-700 dark:border-red-500 dark:text-red-400 font-bold'
                       : 'border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200'
                   }`}
                 >
-                  🎁 My Secret Santa Match
+                  <span>🎁 My Secret Santa Match</span>
+                  {santaNotesCount > 0 && (
+                    <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-emerald-600 text-white font-bold">
+                      {santaNotesCount} note{santaNotesCount > 1 ? 's' : ''}
+                    </span>
+                  )}
                 </button>
               )}
 

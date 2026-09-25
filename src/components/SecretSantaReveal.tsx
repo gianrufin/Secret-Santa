@@ -308,15 +308,13 @@ export const SecretSantaReveal: React.FC<SecretSantaRevealProps> = ({
       </div>
 
       {/* Anonymous Santa Note / Q&A Box */}
-      {recipient && (
-        <AnonymousSantaChat
-          exchangeId={exchange.id}
-          santaId={assignment.santaId}
-          recipientId={assignment.recipientId}
-          currentUserId={currentUserId}
-          recipientName={recipientName}
-        />
-      )}
+      <AnonymousSantaChat
+        exchangeId={exchange.id}
+        santaId={assignment.santaId}
+        recipientId={assignment.recipientId}
+        currentUserId={currentUserId}
+        recipientName={recipientName}
+      />
 
       {/* Printable Shopping Card Modal */}
       {showPrintModal && (

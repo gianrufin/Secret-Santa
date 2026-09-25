@@ -32,6 +32,16 @@
       "recipientId": "String",
       "recipientName": "String",
       "drawnAt": "String"
+    },
+    "messages": {
+      "exchangeId": "String",
+      "threadId": "String",
+      "santaId": "String",
+      "recipientId": "String",
+      "senderId": "String",
+      "senderType": "String",
+      "text": "String",
+      "createdAt": "String"
     }
   }
 }

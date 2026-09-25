@@ -56,6 +56,7 @@ export interface Assignment {
 export interface AnonymousMessage {
   id: string;
   exchangeId: string;
+  threadId?: string;
   recipientId: string; // the target person
   santaId: string; // the santa
   senderId: string; // who wrote it
