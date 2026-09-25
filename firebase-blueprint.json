@@ -11,6 +11,7 @@
       "organizerName": "String",
       "organizerEmail": "String",
       "status": "String",
+      "isDrawUnlocked": "Boolean",
       "createdAt": "String",
       "drawnAt": "String"
     },

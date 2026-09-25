@@ -118,6 +118,15 @@ export default function App() {
         const urlParams = new URLSearchParams(window.location.search);
         const codeParam = urlParams.get('code');
         if (codeParam) {
+          // Immediately strip ?code= from browser URL so it doesn't persist across refreshes or actions
+          try {
+            const cleanUrl = new URL(window.location.href);
+            cleanUrl.searchParams.delete('code');
+            window.history.replaceState({}, document.title, cleanUrl.pathname + (cleanUrl.searchParams.toString() ? '?' + cleanUrl.searchParams.toString() : ''));
+          } catch (e) {
+            // ignore
+          }
+
           const matchCode = combined.find((ex) => ex.code.toUpperCase() === codeParam.toUpperCase());
           let foundEx: Exchange | null = null;
           if (matchCode) {
@@ -131,27 +140,31 @@ export default function App() {
           }
           if (foundEx) {
             setCurrentExchange(foundEx);
-            // If opening directly with an invite code, join once if not yet a participant
-            try {
-              const partRef = doc(db, 'exchanges', foundEx.id, 'participants', user.uid);
-              const pSnap = await getDoc(partRef);
-              if (!pSnap.exists()) {
-                const newPart: Participant = {
-                  id: user.uid,
-                  userId: user.uid,
-                  displayName: user.displayName || user.email?.split('@')[0] || 'Guest',
-                  email: user.email || '',
-                  photoURL: user.photoURL || undefined,
-                  isOrganizer: foundEx.organizerId === user.uid,
-                  isWishlistReady: false,
-                  joinedAt: new Date().toISOString(),
-                  preferences: { likes: '', dislikes: '', clothingSize: '', notes: '' },
-                  wishlist: [],
-                };
-                await setDoc(partRef, newPart);
+            const hasLeftExplicitly = localStorage.getItem(`left_exchange_${foundEx.id}_${user.uid}`) === 'true';
+
+            // If opening directly with an invite code, join once if not yet a participant and user hasn't explicitly left
+            if (!hasLeftExplicitly) {
+              try {
+                const partRef = doc(db, 'exchanges', foundEx.id, 'participants', user.uid);
+                const pSnap = await getDoc(partRef);
+                if (!pSnap.exists()) {
+                  const newPart: Participant = {
+                    id: user.uid,
+                    userId: user.uid,
+                    displayName: user.displayName || user.email?.split('@')[0] || 'Guest',
+                    email: user.email || '',
+                    photoURL: user.photoURL || undefined,
+                    isOrganizer: foundEx.organizerId === user.uid,
+                    isWishlistReady: false,
+                    joinedAt: new Date().toISOString(),
+                    preferences: { likes: '', dislikes: '', clothingSize: '', notes: '' },
+                    wishlist: [],
+                  };
+                  await setDoc(partRef, newPart);
+                }
+              } catch (err) {
+                console.error('Error auto-registering via invite code:', err);
               }
-            } catch (err) {
-              console.error('Error auto-registering via invite code:', err);
             }
           }
         } else if (combined.length > 0 && !currentExchange) {
@@ -236,27 +249,69 @@ export default function App() {
   const handleLeaveExchange = async (exchangeId: string) => {
     if (!user) return;
     try {
-      // 1. Remove participant document from Firestore
-      await deleteDoc(doc(db, 'exchanges', exchangeId, 'participants', user.uid));
+      // 1. Remember that user explicitly left this exchange
+      localStorage.setItem(`left_exchange_${exchangeId}_${user.uid}`, 'true');
+
+      // 2. Immediately strip ?code= from browser URL if present
+      try {
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete('code');
+        window.history.replaceState({}, document.title, cleanUrl.pathname + (cleanUrl.searchParams.toString() ? '?' + cleanUrl.searchParams.toString() : ''));
+      } catch (e) {
+        // ignore
+      }
+
+      // 3. Optimistically remove user from participants state right away
+      setParticipants((prev) => prev.filter((p) => p.userId !== user.uid && p.id !== user.uid));
+
+      // 4. Remove participant document from Firestore by user.uid
+      try {
+        await deleteDoc(doc(db, 'exchanges', exchangeId, 'participants', user.uid));
+      } catch (e) {
+        // ignore
+      }
+
+      // 5. Query and delete ANY participant document in this exchange matching userId or email
+      try {
+        const qUser = query(collection(db, 'exchanges', exchangeId, 'participants'), where('userId', '==', user.uid));
+        const snapUser = await getDocs(qUser);
+        for (const d of snapUser.docs) {
+          await deleteDoc(d.ref);
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      if (user.email) {
+        try {
+          const qEmail = query(collection(db, 'exchanges', exchangeId, 'participants'), where('email', '==', user.email));
+          const snapEmail = await getDocs(qEmail);
+          for (const d of snapEmail.docs) {
+            await deleteDoc(d.ref);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
       
-      // 2. Remove assignment doc if it exists
+      // 6. Remove assignment doc if it exists
       try {
         await deleteDoc(doc(db, 'exchanges', exchangeId, 'assignments', user.uid));
       } catch (e) {
         // ignore
       }
 
-      // 3. Remove exchange ID from user's joined_exchanges in localStorage
+      // 7. Remove exchange ID from user's joined_exchanges in localStorage
       const storageKey = `joined_exchanges_${user.uid}`;
       const saved: string[] = JSON.parse(localStorage.getItem(storageKey) || '[]');
       const filtered = saved.filter((id) => id !== exchangeId);
       localStorage.setItem(storageKey, JSON.stringify(filtered));
 
-      // 4. Update user exchanges state
+      // 8. Update user exchanges state
       const remaining = userExchanges.filter((ex) => ex.id !== exchangeId);
       setUserExchanges(remaining);
 
-      // 5. Update current exchange selection
+      // 9. Update current exchange selection
       if (currentExchange?.id === exchangeId) {
         if (remaining.length > 0) {
           setCurrentExchange(remaining[0]);
@@ -273,6 +328,7 @@ export default function App() {
   const handleJoinCurrentExchange = async () => {
     if (!user || !currentExchange) return;
     try {
+      localStorage.removeItem(`left_exchange_${currentExchange.id}_${user.uid}`);
       const partRef = doc(db, 'exchanges', currentExchange.id, 'participants', user.uid);
       const newPart: Participant = {
         id: user.uid,

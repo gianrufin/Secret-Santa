@@ -40,6 +40,7 @@ export interface Exchange {
   organizerName: string;
   organizerEmail: string;
   status: 'registration' | 'drawn' | 'completed';
+  isDrawUnlocked?: boolean; // Organizer unlocks draw once everyone is registered
   createdAt: string;
   drawnAt?: string;
 }

@@ -141,25 +141,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     if (!currentExchange) return;
     try {
       setLeavingExchange(true);
-      await deleteDoc(doc(db, 'exchanges', currentExchange.id, 'participants', user.uid));
-      try {
-        await deleteDoc(doc(db, 'exchanges', currentExchange.id, 'assignments', user.uid));
-      } catch (e) {
-        // ignore
-      }
-      const storageKey = `joined_exchanges_${user.uid}`;
-      const saved: string[] = JSON.parse(localStorage.getItem(storageKey) || '[]');
-      const filtered = saved.filter((id) => id !== currentExchange.id);
-      localStorage.setItem(storageKey, JSON.stringify(filtered));
-
       if (onLeaveExchange) {
-        onLeaveExchange(currentExchange.id);
+        await onLeaveExchange(currentExchange.id);
+      } else {
+        await deleteDoc(doc(db, 'exchanges', currentExchange.id, 'participants', user.uid));
+        try {
+          await deleteDoc(doc(db, 'exchanges', currentExchange.id, 'assignments', user.uid));
+        } catch (e) {
+          // ignore
+        }
+        const storageKey = `joined_exchanges_${user.uid}`;
+        const saved: string[] = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        const filtered = saved.filter((id) => id !== currentExchange.id);
+        localStorage.setItem(storageKey, JSON.stringify(filtered));
       }
       playClickSound();
       onClose();
     } catch (e: any) {
       console.error('Failed to leave exchange:', e);
-      alert(e.message || 'Failed to leave exchange.');
     } finally {
       setLeavingExchange(false);
       setConfirmLeaveExchange(false);

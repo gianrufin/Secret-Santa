@@ -18,7 +18,11 @@ service cloud.firestore {
         allow read: if isAuthenticated();
         allow create: if isAuthenticated() && request.auth.uid == participantId;
         allow update: if isAuthenticated();
-        allow delete: if isAuthenticated() && (request.auth.uid == participantId || get(/databases/$(database)/documents/exchanges/$(exchangeId)).data.organizerId == request.auth.uid);
+        allow delete: if isAuthenticated() && (
+          request.auth.uid == participantId || 
+          (resource != null && resource.data.userId == request.auth.uid) || 
+          get(/databases/$(database)/documents/exchanges/$(exchangeId)).data.organizerId == request.auth.uid
+        );
       }
 
       // Secret Santa Assignments subcollection (Privacy guarded)
