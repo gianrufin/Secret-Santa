@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Exchanges
+    match /exchanges/{exchangeId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && resource.data.organizerId == request.auth.uid;
+      
+      // Participants subcollection
+      match /participants/{participantId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && request.auth.uid == participantId;
+        allow update: if isAuthenticated();
+        allow delete: if isAuthenticated() && (request.auth.uid == participantId || get(/databases/$(database)/documents/exchanges/$(exchangeId)).data.organizerId == request.auth.uid);
+      }
+
+      // Secret Santa Assignments subcollection (Privacy guarded)
+      match /assignments/{assignmentId} {
+        allow read: if isAuthenticated() && (request.auth.uid == assignmentId || request.auth.uid == resource.data.santaId);
+        allow create, update: if isAuthenticated();
+        allow delete: if isAuthenticated();
+      }
+
+      // Anonymous messages between Santa and Recipient
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update, delete: if isAuthenticated() && (resource.data.senderId == request.auth.uid || get(/databases/$(database)/documents/exchanges/$(exchangeId)).data.organizerId == request.auth.uid);
+      }
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "entities": {
+    "exchanges": {
+      "title": "String",
+      "budget": "String",
+      "exchangeDate": "String",
+      "location": "String",
+      "description": "String",
+      "code": "String",
+      "organizerId": "String",
+      "organizerName": "String",
+      "organizerEmail": "String",
+      "status": "String",
+      "createdAt": "String",
+      "drawnAt": "String"
+    },
+    "participants": {
+      "userId": "String",
+      "displayName": "String",
+      "email": "String",
+      "photoURL": "String",
+      "isOrganizer": "Boolean",
+      "isWishlistReady": "Boolean",
+      "joinedAt": "String",
+      "preferences": "Object",
+      "wishlist": "Array"
+    },
+    "assignments": {
+      "santaId": "String",
+      "santaName": "String",
+      "recipientId": "String",
+      "recipientName": "String",
+      "drawnAt": "String"
+    }
+  }
+}

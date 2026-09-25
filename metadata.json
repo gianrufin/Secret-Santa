@@ -1,0 +1,6 @@
+{
+  "name": "Secret Santa Gift Exchange",
+  "description": "Organize holiday gift exchanges, register participants, share wishlists, and draw secret santas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
