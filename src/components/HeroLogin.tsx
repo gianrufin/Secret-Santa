@@ -17,6 +17,8 @@ export const HeroLogin: React.FC = () => {
         setError('Popup was blocked by your browser. Please allow popups and try again.');
       } else if (err.code === 'auth/popup-closed-by-user') {
         setError('Sign-in cancelled. Please click again to sign in.');
+      } else if (err.code === 'auth/unauthorized-domain') {
+        setError(`This domain (${window.location.hostname}) is not authorized in Firebase. Add "${window.location.hostname}" to Firebase Console → Authentication → Settings → Authorized domains.`);
       } else {
         setError(err.message || 'Unable to sign in with Google. Please try again.');
       }
