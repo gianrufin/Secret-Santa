@@ -100,13 +100,13 @@ export const SecretSantaReveal: React.FC<SecretSantaRevealProps> = ({
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-sm">
+      <div className="bg-white dark:bg-zinc-900 border-2 border-red-200 dark:border-zinc-800 rounded-3xl p-6 shadow-sm overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-100 dark:border-zinc-800">
           <div>
-            <span className="text-[11px] font-bold tracking-wider text-red-700 dark:text-red-400 uppercase">
-              Secret Santa Assignment
+            <span className="text-[11px] font-black tracking-wider text-red-700 dark:text-red-400 uppercase">
+              🎅 Secret Santa Assignment
             </span>
-            <h2 className="text-lg font-bold text-zinc-900 dark:text-white mt-0.5">
+            <h2 className="text-xl font-black text-zinc-900 dark:text-white mt-0.5">
               You are the Secret Santa for:
             </h2>
           </div>
@@ -114,7 +114,7 @@ export const SecretSantaReveal: React.FC<SecretSantaRevealProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowPrintModal(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-bold cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>Shopping Card</span>
@@ -125,7 +125,7 @@ export const SecretSantaReveal: React.FC<SecretSantaRevealProps> = ({
                 setHideName(!hideName);
                 playClickSound();
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-bold cursor-pointer"
             >
               {hideName ? <Eye className="w-3.5 h-3.5 text-amber-500" /> : <EyeOff className="w-3.5 h-3.5 text-zinc-400" />}
               <span>{hideName ? 'Show Name' : 'Hide Name'}</span>
@@ -134,30 +134,30 @@ export const SecretSantaReveal: React.FC<SecretSantaRevealProps> = ({
         </div>
 
         {/* Recipient summary banner */}
-        <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-red-50/70 dark:bg-zinc-800/60 border border-red-100 dark:border-zinc-700">
-          <div className="flex items-center gap-3.5">
+        <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-gradient-to-r from-red-50/90 to-amber-50/60 dark:from-zinc-800/80 dark:to-zinc-800/40 border-2 border-red-200 dark:border-zinc-700">
+          <div className="flex items-center gap-3.5 min-w-0">
             {recipient?.photoURL ? (
               <img
                 src={recipient.photoURL}
                 alt={recipientName}
-                className={`w-14 h-14 rounded-full object-cover border-2 border-red-300 dark:border-red-800 ${
+                className={`w-14 h-14 rounded-2xl object-cover border-2 border-red-400 dark:border-red-800 shadow-xs shrink-0 ${
                   hideName ? 'blur-md' : ''
                 }`}
               />
             ) : (
               <div
-                className={`w-14 h-14 rounded-full bg-red-800 text-white font-bold flex items-center justify-center text-xl shadow-xs ${
+                className={`w-14 h-14 rounded-2xl bg-gradient-to-br from-red-600 to-rose-700 text-white font-black flex items-center justify-center text-xl shadow-xs shrink-0 ${
                   hideName ? 'blur-md' : ''
                 }`}
               >
                 {recipientName.charAt(0).toUpperCase()}
               </div>
             )}
-            <div>
-              <h3 className={`text-2xl font-black text-zinc-900 dark:text-white ${hideName ? 'blur-sm select-none' : ''}`}>
+            <div className="min-w-0 flex-1">
+              <h3 className={`text-xl sm:text-2xl font-black text-red-700 dark:text-red-400 break-words ${hideName ? 'blur-sm select-none' : ''}`}>
                 {hideName ? '••••••••••••' : recipientName}
               </h3>
-              <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">
+              <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5 font-medium">
                 Target budget: <span className="font-bold text-emerald-700 dark:text-emerald-400">{exchange.budget}</span>
               </p>
             </div>

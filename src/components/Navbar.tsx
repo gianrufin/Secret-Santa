@@ -1,5 +1,5 @@
 import React from 'react';
-import { Gift, LogOut, Plus, LogIn, Moon, Sun, Settings } from 'lucide-react';
+import { Gift, LogOut, Plus, LogIn, Moon, Sun, Settings, Sparkles } from 'lucide-react';
 import { User, signOut, auth } from '../firebase';
 import { Exchange } from '../types';
 
@@ -35,31 +35,39 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 transition-colors">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+    <header className="sticky top-0 z-30 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-b-2 border-red-200 dark:border-zinc-800 transition-colors w-full">
+      {/* Top candy cane festive thin stripe */}
+      <div className="h-1 w-full bg-gradient-to-r from-red-500 via-emerald-500 to-amber-500" />
+
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-2 overflow-x-hidden">
         {/* Brand */}
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-red-800 text-white flex items-center justify-center font-bold shadow-xs">
-            <Gift className="w-4 h-4" />
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="w-8 h-8 rounded-2xl bg-gradient-to-br from-red-600 to-rose-700 text-white flex items-center justify-center font-bold shadow-xs animate-gentle-bounce">
+            🎁
           </div>
-          <div>
-            <span className="font-bold text-sm text-zinc-900 dark:text-white">Secret Santa</span>
-            <span className="text-zinc-400 dark:text-zinc-500 text-xs ml-2 hidden sm:inline">Gift Exchange</span>
+          <div className="flex items-center gap-1.5">
+            <span className="font-black text-sm text-red-700 dark:text-red-400 tracking-tight">
+              Secret Santa
+            </span>
+            <span className="text-zinc-400 dark:text-zinc-500 text-xs hidden sm:inline font-bold">
+              Party
+            </span>
+            <span className="text-xs">🎄</span>
           </div>
         </div>
 
         {/* Center / Action Controls */}
         {user && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             {userExchanges.length > 0 && (
-              <div className="hidden sm:block">
+              <div className="hidden sm:block min-w-0">
                 <select
                   value={currentExchange?.id || ''}
                   onChange={(e) => {
                     const found = userExchanges.find((ex) => ex.id === e.target.value);
                     if (found) onSelectExchange(found);
                   }}
-                  className="bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-800 dark:text-zinc-200 rounded-md py-1.5 px-2.5 font-medium focus:outline-none cursor-pointer"
+                  className="max-w-[140px] md:max-w-[220px] truncate bg-red-50/60 dark:bg-zinc-800 border-2 border-red-200 dark:border-zinc-700 text-xs text-zinc-900 dark:text-zinc-100 rounded-xl py-1.5 px-2.5 font-bold focus:outline-none cursor-pointer"
                 >
                   {userExchanges.map((ex) => (
                     <option key={ex.id} value={ex.id}>
@@ -71,30 +79,32 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
             <button
               onClick={onCreateNew}
-              className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-900 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1 text-xs font-black px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white shadow-xs transition-transform active:scale-95 cursor-pointer shrink-0"
+              title="Create new holiday exchange"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>New</span>
             </button>
             <button
               onClick={onJoinCode}
-              className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-xl border-2 border-red-200 dark:border-zinc-700 hover:bg-red-50 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 transition-colors cursor-pointer shrink-0"
+              title="Join with room code"
             >
-              <LogIn className="w-3.5 h-3.5" />
+              <LogIn className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
               <span>Join</span>
             </button>
           </div>
         )}
 
         {/* Right Controls: Theme Toggle + Settings + Profile */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Quick theme toggle */}
           <button
             onClick={() => onToggleDarkMode(!isDarkMode)}
             title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+            className="p-1.5 rounded-xl text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
           >
-            {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
+            {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-zinc-600" />}
           </button>
 
           {user && (
@@ -102,32 +112,32 @@ export const Navbar: React.FC<NavbarProps> = ({
               {/* Settings button */}
               <button
                 onClick={onOpenSettings}
-                title="Settings"
-                className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                title="Exchange Settings & Management"
+                className="p-1.5 rounded-xl text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
               >
                 <Settings className="w-4 h-4" />
               </button>
 
-              <div className="flex items-center gap-2 pl-1 border-l border-zinc-200 dark:border-zinc-800">
+              <div className="flex items-center gap-1.5 pl-1 border-l border-zinc-200 dark:border-zinc-800">
                 {user.photoURL ? (
                   <img
                     src={user.photoURL}
                     alt={user.displayName || 'User'}
-                    className="w-7 h-7 rounded-full object-cover border border-zinc-200 dark:border-zinc-700"
+                    className="w-7 h-7 rounded-xl object-cover border-2 border-red-200 dark:border-zinc-700 shadow-2xs"
                   />
                 ) : (
-                  <div className="w-7 h-7 rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 flex items-center justify-center text-xs font-semibold">
+                  <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-red-600 to-rose-700 text-white flex items-center justify-center text-xs font-black shadow-2xs">
                     {user.displayName?.charAt(0) || user.email?.charAt(0) || 'U'}
                   </div>
                 )}
-                <span className="text-xs text-zinc-700 dark:text-zinc-300 font-medium hidden md:inline max-w-[100px] truncate">
-                  {user.displayName || user.email}
+                <span className="text-xs text-zinc-800 dark:text-zinc-200 font-bold hidden md:inline max-w-[90px] truncate" title={user.displayName || user.email || ''}>
+                  {user.displayName?.split(' ')[0] || user.email?.split('@')[0]}
                 </span>
 
                 <button
                   onClick={handleSignOut}
                   title="Sign out"
-                  className="p-1.5 text-zinc-400 hover:text-red-600 dark:hover:text-red-400 rounded-md transition-colors cursor-pointer"
+                  className="p-1.5 text-zinc-400 hover:text-red-600 dark:hover:text-red-400 rounded-xl transition-colors cursor-pointer"
                 >
                   <LogOut className="w-4 h-4" />
                 </button>

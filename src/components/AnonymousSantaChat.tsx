@@ -204,7 +204,7 @@ export const AnonymousSantaChat: React.FC<AnonymousSantaChatProps> = ({
   };
 
   return (
-    <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm space-y-4">
+    <div className="bg-white dark:bg-zinc-900 border-2 border-red-200 dark:border-zinc-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
       {/* Header with Title and Tabs */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-100 dark:border-zinc-800">
         <div className="flex items-center gap-2">
@@ -225,7 +225,7 @@ export const AnonymousSantaChat: React.FC<AnonymousSantaChatProps> = ({
         </div>
 
         {/* Tab switchers */}
-        <div className="flex items-center gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 p-1 bg-red-50/80 dark:bg-zinc-800 rounded-2xl border border-red-100 dark:border-zinc-700">
           <button
             type="button"
             onClick={() => {
@@ -233,15 +233,20 @@ export const AnonymousSantaChat: React.FC<AnonymousSantaChatProps> = ({
               setError(null);
               playClickSound();
             }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 min-w-0 ${
               activeTab === 'to_recipient'
-                ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-xs'
+                ? 'bg-red-600 text-white shadow-xs'
                 : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
             }`}
           >
-            <span>🎅 Ask {recipientName}</span>
+            <span className="flex items-center gap-1 min-w-0">
+              <span>🎅 Ask</span>
+              <span className="truncate max-w-[85px] sm:max-w-[130px] inline-block" title={recipientName}>
+                {recipientName}
+              </span>
+            </span>
             {toRecipientMessages.length > 0 && (
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-red-100 dark:bg-red-950/70 text-red-700 dark:text-red-400">
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 text-white font-bold shrink-0">
                 {toRecipientMessages.length}
               </span>
             )}
@@ -254,15 +259,15 @@ export const AnonymousSantaChat: React.FC<AnonymousSantaChatProps> = ({
               setError(null);
               playClickSound();
             }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
               activeTab === 'from_santa'
-                ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-xs'
+                ? 'bg-emerald-600 text-white shadow-xs'
                 : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
             }`}
           >
             <span>🤫 Notes from Your Santa</span>
             {fromSantaMessages.length > 0 && (
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 font-bold">
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 text-white font-bold">
                 {fromSantaMessages.length}
               </span>
             )}

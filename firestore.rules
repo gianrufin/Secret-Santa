@@ -16,18 +16,14 @@ service cloud.firestore {
       // Participants subcollection
       match /participants/{participantId} {
         allow read: if isAuthenticated();
-        allow create: if isAuthenticated() && request.auth.uid == participantId;
+        allow create: if isAuthenticated();
         allow update: if isAuthenticated();
-        allow delete: if isAuthenticated() && (
-          request.auth.uid == participantId || 
-          (resource != null && resource.data.userId == request.auth.uid) || 
-          get(/databases/$(database)/documents/exchanges/$(exchangeId)).data.organizerId == request.auth.uid
-        );
+        allow delete: if isAuthenticated();
       }
 
-      // Secret Santa Assignments subcollection (Privacy guarded)
+      // Secret Santa Assignments subcollection
       match /assignments/{assignmentId} {
-        allow read: if isAuthenticated() && (request.auth.uid == assignmentId || request.auth.uid == resource.data.santaId);
+        allow read: if isAuthenticated();
         allow create, update: if isAuthenticated();
         allow delete: if isAuthenticated();
       }
@@ -36,8 +32,9 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if isAuthenticated();
         allow create: if isAuthenticated();
-        allow update, delete: if isAuthenticated() && (resource.data.senderId == request.auth.uid || get(/databases/$(database)/documents/exchanges/$(exchangeId)).data.organizerId == request.auth.uid);
+        allow update, delete: if isAuthenticated();
       }
     }
   }
 }
+

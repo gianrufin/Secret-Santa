@@ -1,1 +1,98 @@
 @import "tailwindcss";
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    max-width: 100vw;
+    min-height: 100%;
+    overflow-x: hidden;
+    background-color: #fef7f2;
+    color: #1f2937;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html.dark,
+  html.dark body {
+    background-color: #09090b;
+    color: #f4f4f5;
+  }
+
+  #root {
+    min-height: 100vh;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+/* Custom Bubbly Festive Animations */
+@keyframes jiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-3deg) scale(1.02); }
+  75% { transform: rotate(3deg) scale(1.02); }
+}
+
+@keyframes gentle-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes snow-fall {
+  0% { transform: translateY(-10px) translateX(0); opacity: 0; }
+  20% { opacity: 0.8; }
+  80% { opacity: 0.8; }
+  100% { transform: translateY(100vh) translateX(25px); opacity: 0; }
+}
+
+.animate-jiggle {
+  animation: jiggle 2s infinite ease-in-out;
+}
+
+.animate-gentle-bounce {
+  animation: gentle-bounce 2.5s infinite ease-in-out;
+}
+
+/* Candy stripe subtle header pattern */
+.candy-stripe-border {
+  background: repeating-linear-gradient(
+    -45deg,
+    #ef4444,
+    #ef4444 10px,
+    #ffffff 10px,
+    #ffffff 20px,
+    #10b981 20px,
+    #10b981 30px,
+    #ffffff 30px,
+    #ffffff 40px
+  );
+}
+
+/* Scrollbar polish */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.4);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.7);
+}
+

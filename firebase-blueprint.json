@@ -20,6 +20,8 @@
       "displayName": "String",
       "email": "String",
       "photoURL": "String",
+      "claimed": "Boolean",
+      "claimedAt": "String",
       "isOrganizer": "Boolean",
       "isWishlistReady": "Boolean",
       "joinedAt": "String",
@@ -27,8 +29,10 @@
       "wishlist": "Array"
     },
     "assignments": {
+      "santaParticipantId": "String",
       "santaId": "String",
       "santaName": "String",
+      "recipientParticipantId": "String",
       "recipientId": "String",
       "recipientName": "String",
       "drawnAt": "String"

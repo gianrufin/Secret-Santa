@@ -145,7 +145,7 @@ export const WishlistEditor: React.FC<WishlistEditorProps> = ({
   ) => {
     try {
       setSaving(true);
-      const participantRef = doc(db, 'exchanges', exchangeId, 'participants', participant.userId);
+      const participantRef = doc(db, 'exchanges', exchangeId, 'participants', participant.id);
       await updateDoc(participantRef, {
         wishlist: currentList,
         preferences: currentPrefs,
@@ -230,19 +230,20 @@ export const WishlistEditor: React.FC<WishlistEditorProps> = ({
       )}
 
       {/* 2. Status Bar */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-zinc-900 border-2 border-red-200 dark:border-zinc-800 rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-100">Your Wishlist & Preferences</h2>
+            <span className="text-xl">📝</span>
+            <h2 className="text-base font-black text-red-700 dark:text-red-400">Your Wishlist & Preferences</h2>
             {isLocked && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700">
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700">
                 <Lock className="w-3 h-3 text-zinc-500" />
-                <span>Locked</span>
+                <span>Locked 🔒</span>
               </span>
             )}
           </div>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-            Suggested budget is <span className="font-semibold text-emerald-700 dark:text-emerald-400">{budget}</span>.
+          <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 font-medium">
+            Suggested budget is <span className="font-bold text-emerald-700 dark:text-emerald-400">{budget}</span>.
             {isLocked 
               ? ' Your list is locked for your Secret Santa.' 
               : ' Add items and lock your list before the deadline.'}
@@ -252,18 +253,18 @@ export const WishlistEditor: React.FC<WishlistEditorProps> = ({
         <div className="flex items-center gap-2.5">
           {isReady ? (
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-2 border-emerald-300 dark:border-emerald-800 text-xs font-black">
                 <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Wishlist Ready & Locked</span>
+                <span>Wishlist Ready & Locked ✓</span>
               </span>
 
               {!isDrawn && !isDeadlinePassed && (
                 <button
                   onClick={handleToggleReady}
-                  className="text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 underline cursor-pointer"
+                  className="text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 underline cursor-pointer font-bold"
                   title="Unlock to edit items before deadline"
                 >
-                  Unlock to edit
+                  Unlock
                 </button>
               )}
             </div>
@@ -271,10 +272,10 @@ export const WishlistEditor: React.FC<WishlistEditorProps> = ({
             <button
               onClick={handleToggleReady}
               disabled={isDrawn || isDeadlinePassed}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-red-700 hover:bg-red-800 text-white shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-black bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 text-white shadow-md transition-transform active:scale-95 cursor-pointer disabled:opacity-50"
             >
-              <Lock className="w-3.5 h-3.5" />
-              <span>Lock & Mark as Ready</span>
+              <Lock className="w-3.5 h-3.5 text-amber-300" />
+              <span>Lock & Mark as Ready 🎁</span>
             </button>
           )}
         </div>
@@ -286,9 +287,9 @@ export const WishlistEditor: React.FC<WishlistEditorProps> = ({
         <div className="lg:col-span-7 space-y-4">
           {/* Add Item Box */}
           {!isLocked ? (
-            <form onSubmit={handleAddItem} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm space-y-3">
-              <h3 className="text-xs font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
-                Add Gift Idea
+            <form onSubmit={handleAddItem} className="bg-white dark:bg-zinc-900 border-2 border-red-200 dark:border-zinc-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-3.5">
+              <h3 className="text-xs font-black text-red-700 dark:text-red-400 uppercase tracking-wider flex items-center gap-1.5">
+                <span>🎁 Add Holiday Gift Idea</span>
               </h3>
 
               <div>

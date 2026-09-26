@@ -15,15 +15,17 @@ export interface ParticipantPreferences {
 
 export interface Participant {
   id: string;
-  userId: string;
+  userId?: string;
   displayName: string;
-  email: string;
+  email?: string;
   photoURL?: string;
+  claimed?: boolean;
+  claimedAt?: string;
   isOrganizer: boolean;
   isWishlistReady: boolean;
   joinedAt: string;
-  preferences: ParticipantPreferences;
-  wishlist: WishlistItem[];
+  preferences?: ParticipantPreferences;
+  wishlist?: WishlistItem[];
 }
 
 export interface Exchange {
@@ -46,8 +48,11 @@ export interface Exchange {
 }
 
 export interface Assignment {
+  id?: string;
+  santaParticipantId?: string;
   santaId: string;
   santaName: string;
+  recipientParticipantId?: string;
   recipientId: string;
   recipientName: string;
   drawnAt: string;

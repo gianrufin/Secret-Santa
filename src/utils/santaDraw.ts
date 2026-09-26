@@ -32,16 +32,20 @@ export function generateSecretSantaDraw(participants: Participant[]): Assignment
     const drawnAt = new Date().toISOString();
     return [
       {
-        santaId: original[0].userId,
+        santaParticipantId: original[0].id,
+        santaId: original[0].userId || original[0].id,
         santaName: original[0].displayName,
-        recipientId: original[1].userId,
+        recipientParticipantId: original[1].id,
+        recipientId: original[1].userId || original[1].id,
         recipientName: original[1].displayName,
         drawnAt,
       },
       {
-        santaId: original[1].userId,
+        santaParticipantId: original[1].id,
+        santaId: original[1].userId || original[1].id,
         santaName: original[1].displayName,
-        recipientId: original[0].userId,
+        recipientParticipantId: original[0].id,
+        recipientId: original[0].userId || original[0].id,
         recipientName: original[0].displayName,
         drawnAt,
       },
@@ -66,10 +70,10 @@ export function generateSecretSantaDraw(participants: Participant[]): Assignment
       [candidate[i], candidate[j]] = [candidate[j], candidate[i]];
     }
 
-    // Verify derangement constraint: candidate[i].userId !== original[i].userId for all i
+    // Verify derangement constraint: candidate[i].id !== original[i].id for all i
     let valid = true;
     for (let i = 0; i < n; i++) {
-      if (candidate[i].userId === original[i].userId) {
+      if (candidate[i].id === original[i].id) {
         valid = false;
         break;
       }
@@ -89,7 +93,7 @@ export function generateSecretSantaDraw(participants: Participant[]): Assignment
 
     // Swap any accidental self-matches (safety guard)
     for (let i = 0; i < n; i++) {
-      if (derangement[i].userId === original[i].userId) {
+      if (derangement[i].id === original[i].id) {
         const swapTarget = (i + 1) % n;
         [derangement[i], derangement[swapTarget]] = [derangement[swapTarget], derangement[i]];
       }
@@ -100,9 +104,11 @@ export function generateSecretSantaDraw(participants: Participant[]): Assignment
   const assignments: Assignment[] = original.map((santa, idx) => {
     const recipient = derangement[idx];
     return {
-      santaId: santa.userId,
+      santaParticipantId: santa.id,
+      santaId: santa.userId || santa.id,
       santaName: santa.displayName,
-      recipientId: recipient.userId,
+      recipientParticipantId: recipient.id,
+      recipientId: recipient.userId || recipient.id,
       recipientName: recipient.displayName,
       drawnAt,
     };

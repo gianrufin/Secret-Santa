@@ -12,10 +12,12 @@ import {
   UserMinus,
   Lock,
   Unlock,
-  Shuffle,
-  Info
+  Plus,
+  RefreshCw,
+  Gift,
+  UserCheck
 } from 'lucide-react';
-import { db, doc, writeBatch, deleteDoc, updateDoc, collection, query, where, getDocs } from '../firebase';
+import { db, doc, writeBatch, deleteDoc, updateDoc, setDoc, collection, query, where, getDocs } from '../firebase';
 import { Exchange, Participant, Assignment } from '../types';
 import { generateSecretSantaDraw } from '../utils/santaDraw';
 import { fireHolidayConfetti } from '../utils/confetti';
@@ -29,7 +31,10 @@ interface ParticipantsListProps {
   onViewWishlist?: (participant: Participant) => void;
   onOpenShare?: () => void;
   onLeaveExchange?: (exchangeId: string) => void;
+  onClaimName?: (participant: Participant) => void;
 }
+
+const FESTIVE_EMOJIS = ['🎅', '🎄', '🎁', '⛄', '🦌', '🍪', '🔔', '✨', '🧦', '❄️'];
 
 export const ParticipantsList: React.FC<ParticipantsListProps> = ({
   exchange,
@@ -39,8 +44,8 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
   onViewWishlist,
   onOpenShare,
   onLeaveExchange,
+  onClaimName,
 }) => {
-  // Local participants state that syncs with props, but allows instant optimistic removals
   const [localParticipants, setLocalParticipants] = useState<Participant[]>(participants);
 
   useEffect(() => {
@@ -50,26 +55,34 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
   const [drawing, setDrawing] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showEarlyUnlockModal, setShowEarlyUnlockModal] = useState(false);
+  const [showAddRosterModal, setShowAddRosterModal] = useState(false);
+  const [newRosterName, setNewRosterName] = useState('');
+  const [addRosterLoading, setAddRosterLoading] = useState(false);
+
   const [participantToRemove, setParticipantToRemove] = useState<Participant | null>(null);
-  const [confirmLeaveSelf, setConfirmLeaveSelf] = useState(false);
+  const [participantToReset, setParticipantToReset] = useState<Participant | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [unlockLoading, setUnlockLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const readyCount = localParticipants.filter((p) => p.isWishlistReady).length;
   const totalCount = localParticipants.length;
+  const claimedCount = localParticipants.filter((p) => p.claimed || p.userId).length;
+  const readyCount = localParticipants.filter((p) => p.isWishlistReady).length;
   const isDrawn = exchange.status === 'drawn';
   const allReady = totalCount >= 2 && readyCount === totalCount;
   const isUnlocked = Boolean(exchange.isDrawUnlocked);
 
-  // Toggle Draw Unlock state in Firestore (Organizer only)
+  // Check if current user has already claimed a participant slot
+  const currentUserParticipant = localParticipants.find((p) => p.userId === currentUserId);
+  const hasClaimed = Boolean(currentUserParticipant);
+
+  // Toggle Draw Unlock
   const handleToggleDrawLock = async (forceUnlock = false) => {
     if (!isOrganizer) return;
     try {
       setUnlockLoading(true);
       setError(null);
 
-      // If unlocking and not everyone is ready, and forceUnlock is not confirmed yet:
       if (!isUnlocked && !allReady && !forceUnlock) {
         setShowEarlyUnlockModal(true);
         return;
@@ -91,66 +104,144 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
     }
   };
 
+  // Add a new person to the roster (Organizer feature)
+  const handleAddPersonToRoster = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newRosterName.trim();
+    if (!trimmed) return;
+
+    if (localParticipants.some((p) => p.displayName.toLowerCase() === trimmed.toLowerCase())) {
+      setError(`"${trimmed}" is already on the holiday roster!`);
+      return;
+    }
+
+    try {
+      setAddRosterLoading(true);
+      setError(null);
+
+      const partId = 'part_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6);
+      const newPart: Participant = {
+        id: partId,
+        displayName: trimmed,
+        isOrganizer: false,
+        claimed: false,
+        isWishlistReady: false,
+        joinedAt: new Date().toISOString(),
+        preferences: {
+          likes: '',
+          dislikes: '',
+          clothingSize: '',
+          notes: '',
+        },
+        wishlist: [],
+      };
+
+      await setDoc(doc(db, 'exchanges', exchange.id, 'participants', partId), newPart);
+
+      setLocalParticipants((prev) => [...prev, newPart]);
+      setNewRosterName('');
+      setShowAddRosterModal(false);
+      playChimeSound();
+    } catch (err: any) {
+      console.error('Failed to add participant:', err);
+      setError(err.message || 'Failed to add participant to roster.');
+    } finally {
+      setAddRosterLoading(false);
+    }
+  };
+
+  // Claim a spot directly from the list
+  const handleDirectClaim = async (person: Participant) => {
+    if (person.claimed && person.userId && person.userId !== currentUserId) {
+      setError(`"${person.displayName}" has already been claimed by someone else!`);
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      setError(null);
+
+      const updates = {
+        userId: currentUserId,
+        claimed: true,
+        claimedAt: new Date().toISOString(),
+      };
+
+      await updateDoc(doc(db, 'exchanges', exchange.id, 'participants', person.id), updates);
+
+      const updated = { ...person, ...updates };
+      setLocalParticipants((prev) => prev.map((p) => p.id === person.id ? updated : p));
+      playChimeSound();
+      fireHolidayConfetti();
+
+      if (onClaimName) {
+        onClaimName(updated);
+      }
+    } catch (err: any) {
+      console.error('Failed to claim:', err);
+      setError(err.message || 'Failed to claim spot.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Reset a claim (Organizer can free up a slot if someone made an accidental mistake)
+  const handleResetClaim = async () => {
+    if (!participantToReset) return;
+    try {
+      setActionLoading(true);
+      setError(null);
+
+      const updates = {
+        userId: '',
+        email: '',
+        photoURL: '',
+        claimed: false,
+        claimedAt: '',
+      };
+
+      await updateDoc(doc(db, 'exchanges', exchange.id, 'participants', participantToReset.id), updates);
+
+      const updated = {
+        ...participantToReset,
+        userId: undefined,
+        email: undefined,
+        photoURL: undefined,
+        claimed: false,
+        claimedAt: undefined,
+      };
+
+      setLocalParticipants((prev) => prev.map((p) => p.id === participantToReset.id ? updated : p));
+      playClickSound();
+      setParticipantToReset(null);
+    } catch (err: any) {
+      console.error('Failed to reset claim:', err);
+      setError(err.message || 'Failed to reset claim.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Delete/remove participant from roster
   const handleConfirmRemoveParticipant = async () => {
     if (!participantToRemove) return;
     try {
       setActionLoading(true);
       setError(null);
 
-      const targetUserId = participantToRemove.userId;
       const targetDocId = participantToRemove.id;
-      const targetEmail = participantToRemove.email;
+      const targetUserId = participantToRemove.userId;
 
-      // 1. Optimistically remove from local state immediately
-      setLocalParticipants((prev) => 
-        prev.filter((p) => p.userId !== targetUserId && p.id !== targetDocId)
-      );
+      setLocalParticipants((prev) => prev.filter((p) => p.id !== targetDocId));
 
-      // 2. Delete main participant doc
-      if (targetDocId) {
-        try {
-          await deleteDoc(doc(db, 'exchanges', exchange.id, 'participants', targetDocId));
-        } catch (e) {
-          // continue
-        }
-      }
-      if (targetUserId && targetUserId !== targetDocId) {
-        try {
-          await deleteDoc(doc(db, 'exchanges', exchange.id, 'participants', targetUserId));
-        } catch (e) {
-          // continue
-        }
-      }
+      await deleteDoc(doc(db, 'exchanges', exchange.id, 'participants', targetDocId));
 
-      // 3. Clean any docs matching userId
       if (targetUserId) {
-        const qUser = query(
-          collection(db, 'exchanges', exchange.id, 'participants'), 
-          where('userId', '==', targetUserId)
-        );
-        const snap = await getDocs(qUser);
-        for (const d of snap.docs) {
-          await deleteDoc(d.ref);
+        try {
+          await deleteDoc(doc(db, 'exchanges', exchange.id, 'assignments', targetUserId));
+        } catch (e) {
+          // ignore
         }
-      }
-
-      // 4. Clean any docs matching email
-      if (targetEmail) {
-        const qEmail = query(
-          collection(db, 'exchanges', exchange.id, 'participants'), 
-          where('email', '==', targetEmail)
-        );
-        const snapE = await getDocs(qEmail);
-        for (const d of snapE.docs) {
-          await deleteDoc(d.ref);
-        }
-      }
-
-      // 5. Delete assignment doc if any
-      try {
-        await deleteDoc(doc(db, 'exchanges', exchange.id, 'assignments', targetUserId));
-      } catch (e) {
-        // ignore
       }
 
       playClickSound();
@@ -163,39 +254,11 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
     }
   };
 
-  const handleConfirmLeaveSelf = async () => {
-    try {
-      setActionLoading(true);
-      setError(null);
-
-      // 1. Optimistically remove self from local state
-      setLocalParticipants((prev) => prev.filter((p) => p.userId !== currentUserId));
-
-      // 2. Notify parent handler to delete docs and cleanup storage
-      if (onLeaveExchange) {
-        await onLeaveExchange(exchange.id);
-      } else {
-        await deleteDoc(doc(db, 'exchanges', exchange.id, 'participants', currentUserId));
-        try {
-          await deleteDoc(doc(db, 'exchanges', exchange.id, 'assignments', currentUserId));
-        } catch (e) {
-          // ignore
-        }
-      }
-
-      playClickSound();
-      setConfirmLeaveSelf(false);
-    } catch (err: any) {
-      console.error('Failed to leave exchange:', err);
-      setError(err.message || 'Failed to leave exchange.');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleExecuteDraw = async () => {
+  // Perform Secret Santa Draw
+  const handlePerformDraw = async () => {
+    if (!isOrganizer) return;
     if (localParticipants.length < 2) {
-      setError('You need at least 2 participants to run a Secret Santa draw.');
+      setError('You need at least 2 participants on the roster to draw names!');
       return;
     }
 
@@ -203,28 +266,36 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
       setDrawing(true);
       setError(null);
 
-      // Execute uniform random derangement (super random, without duplicates, no self-draws)
       const assignments = generateSecretSantaDraw(localParticipants);
+
       const batch = writeBatch(db);
 
-      assignments.forEach((assignment) => {
-        const assignmentRef = doc(db, 'exchanges', exchange.id, 'assignments', assignment.santaId);
-        batch.set(assignmentRef, assignment);
-      });
+      for (const assignment of assignments) {
+        // Save assignment indexed by santaId (and santaParticipantId fallback)
+        const assignRef = doc(db, 'exchanges', exchange.id, 'assignments', assignment.santaId);
+        batch.set(assignRef, assignment);
 
-      const exchangeRef = doc(db, 'exchanges', exchange.id);
-      batch.update(exchangeRef, {
+        if (assignment.santaParticipantId && assignment.santaParticipantId !== assignment.santaId) {
+          const assignPartRef = doc(db, 'exchanges', exchange.id, 'assignments', assignment.santaParticipantId);
+          batch.set(assignPartRef, assignment);
+        }
+      }
+
+      const exRef = doc(db, 'exchanges', exchange.id);
+      batch.update(exRef, {
         status: 'drawn',
+        isDrawUnlocked: true,
         drawnAt: new Date().toISOString(),
       });
 
       await batch.commit();
+
       playChimeSound();
       fireHolidayConfetti();
       setShowConfirmModal(false);
     } catch (err: any) {
-      console.error('Failed to draw names:', err);
-      setError(err.message || 'Failed to draw names.');
+      console.error('Error drawing Secret Santa names:', err);
+      setError(err.message || 'Failed to draw names. Please try again.');
     } finally {
       setDrawing(false);
     }
@@ -232,67 +303,66 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Action / Status Bar */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-              <span>Participants Roster</span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-semibold">
-                {totalCount} Joined
-              </span>
-            </h2>
-            <div className="flex items-center gap-2 mt-1">
-              <span className={`text-xs font-medium flex items-center gap-1 ${
-                allReady 
-                  ? 'text-emerald-700 dark:text-emerald-400 font-semibold' 
-                  : 'text-zinc-500 dark:text-zinc-400'
-              }`}>
-                {allReady ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>All {totalCount} participants have finalized wishlists!</span>
-                  </>
-                ) : (
-                  <>
-                    <Clock className="w-3.5 h-3.5 text-amber-500" />
-                    <span>{readyCount} of {totalCount} ready ({totalCount - readyCount} still drafting wishlists)</span>
-                  </>
-                )}
-              </span>
+      {/* Festive Roster Header */}
+      <div className="bg-white dark:bg-zinc-900 border-2 border-red-200 dark:border-zinc-800 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🎅</span>
+              <h2 className="text-lg sm:text-xl font-black text-red-700 dark:text-red-400 tracking-tight">
+                Holiday Guest Roster ({totalCount})
+              </h2>
             </div>
+            <p className="text-xs text-zinc-600 dark:text-zinc-400">
+              {claimedCount} of {totalCount} spots claimed by guests. {readyCount} have locked their wishlists! 🎁
+            </p>
           </div>
 
-          {/* Action Buttons */}
+          {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-2">
-            {onOpenShare && !isDrawn && (
+            {/* Add person button (organizer) */}
+            {isOrganizer && !isDrawn && (
               <button
+                type="button"
+                onClick={() => {
+                  playClickSound();
+                  setShowAddRosterModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-transform active:scale-95 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Person to List</span>
+              </button>
+            )}
+
+            {/* Invite share */}
+            {onOpenShare && (
+              <button
+                type="button"
                 onClick={() => {
                   playClickSound();
                   onOpenShare();
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-semibold transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl border-2 border-red-200 dark:border-zinc-700 hover:bg-red-50 dark:hover:bg-zinc-800 text-red-700 dark:text-red-400 text-xs font-bold transition-all cursor-pointer shadow-2xs"
               >
-                <Share2 className="w-3.5 h-3.5 text-zinc-500" />
-                <span>Invite Friends</span>
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Invite Link</span>
               </button>
             )}
 
-            {/* Organizer Unlock Toggle Button */}
+            {/* Organizer Unlock Draw button */}
             {isOrganizer && !isDrawn && (
               <button
+                type="button"
                 onClick={() => handleToggleDrawLock()}
                 disabled={unlockLoading || totalCount < 2}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer shadow-2xs ${
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs font-bold border-2 transition-all cursor-pointer shadow-xs ${
                   totalCount < 2
-                    ? 'border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed'
+                    ? 'border-zinc-200 dark:border-zinc-800 text-zinc-400 cursor-not-allowed opacity-60'
                     : isUnlocked
-                    ? 'border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100'
-                    : allReady
-                    ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 font-bold'
-                    : 'border-zinc-300 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200'
+                    ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100'
+                    : 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100'
                 }`}
-                title={isUnlocked ? 'Re-lock the draw' : 'Unlock the draw button'}
               >
                 {isUnlocked ? (
                   <>
@@ -302,363 +372,371 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
                 ) : (
                   <>
                     <Unlock className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>{allReady ? 'All Ready! Unlock Draw' : 'Unlock Draw'}</span>
+                    <span>Unlock Draw</span>
                   </>
                 )}
               </button>
             )}
 
-            {/* Draw Names Button */}
+            {/* Organizer Draw Names button */}
             {isOrganizer && !isDrawn && (
               <button
+                type="button"
                 onClick={() => {
                   playClickSound();
                   setShowConfirmModal(true);
                 }}
                 disabled={!isUnlocked || totalCount < 2}
-                className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all shadow-xs ${
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-black shadow-md transition-transform active:scale-95 ${
                   !isUnlocked || totalCount < 2
-                    ? 'bg-zinc-100 dark:bg-zinc-800/80 text-zinc-400 dark:text-zinc-600 border border-zinc-200 dark:border-zinc-700 cursor-not-allowed'
-                    : 'bg-red-700 hover:bg-red-800 text-white shadow-md cursor-pointer animate-pulse-subtle'
+                    ? 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600 border border-zinc-300 dark:border-zinc-700 cursor-not-allowed opacity-60'
+                    : 'bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 text-white cursor-pointer shadow-red-500/30 animate-pulse-subtle'
                 }`}
-                title={
-                  !isUnlocked
-                    ? 'Draw is locked. Please wait for everyone to register and unlock the draw above.'
-                    : 'Ready to draw names!'
-                }
               >
-                {!isUnlocked ? (
-                  <Lock className="w-3.5 h-3.5 text-zinc-400" />
-                ) : (
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                )}
-                <span>Draw Secret Santa Names</span>
+                <Sparkles className="w-4 h-4 text-amber-300" />
+                <span>Draw Secret Santa Names! 🎁</span>
               </button>
             )}
 
             {isDrawn && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold">
-                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Draw Complete — Secret Santas Active</span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-2 border-emerald-300 dark:border-emerald-800 text-xs font-black">
+                <Check className="w-4 h-4 text-emerald-600" />
+                <span>Draw Complete! 🎅</span>
               </span>
             )}
           </div>
         </div>
 
-        {/* Readiness Info Banner before draw */}
-        {!isDrawn && (
-          <div className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
-            isUnlocked
-              ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50 text-emerald-900 dark:text-emerald-200'
-              : !allReady
-              ? 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/50 text-amber-900 dark:text-amber-200'
-              : 'bg-zinc-50 dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300'
-          }`}>
-            <Info className="w-4 h-4 shrink-0 mt-0.5" />
-            <div className="space-y-0.5">
-              <p className="font-semibold">
-                {isUnlocked
-                  ? '🔓 Draw is Unlocked!'
-                  : totalCount < 2
-                  ? '🔒 Draw Locked: Waiting for more participants'
-                  : !allReady
-                  ? '🔒 Draw Locked: Waiting for everyone to finish registering'
-                  : '🔒 Draw Locked: Ready for organizer to unlock'}
-              </p>
-              <p className="text-[11px] opacity-90 leading-relaxed">
-                {isUnlocked
-                  ? 'The organizer has unlocked the draw button. Names will be paired in a super-random, unbiased Secret Santa derangement without duplicates!'
-                  : totalCount < 2
-                  ? 'At least 2 participants must join before the draw can be unlocked.'
-                  : !allReady
-                  ? `${totalCount - readyCount} participant(s) are still drafting their wishlist. Once all participants click "Mark Ready" (or the organizer unlocks), the draw can be run!`
-                  : 'All participants have marked their wishlists as ready! The organizer can now click "Unlock Draw" to begin the Secret Santa match.'}
-              </p>
+        {error && (
+          <div className="p-3 rounded-2xl bg-red-100 dark:bg-red-950/70 border-2 border-red-300 dark:border-red-800 text-red-800 dark:text-red-300 text-xs font-bold flex items-center justify-between gap-2 shadow-xs">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+              <span>{error}</span>
             </div>
+            <button onClick={() => setError(null)} className="text-xs hover:underline cursor-pointer">
+              Dismiss
+            </button>
           </div>
         )}
       </div>
 
-      {error && (
-        <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 text-xs flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
+      {/* Participants Cards / List */}
+      <div className="bg-white dark:bg-zinc-900 border-2 border-red-200 dark:border-zinc-800 rounded-3xl overflow-hidden shadow-sm">
+        {/* Responsive Table Wrapper */}
+        <div className="w-full overflow-x-auto">
+          <table className="w-full min-w-[550px] divide-y divide-zinc-200 dark:divide-zinc-800 text-xs">
+            <thead className="bg-red-50/70 dark:bg-zinc-800/70">
+              <tr>
+                <th className="px-4 sm:px-6 py-3.5 text-left font-black text-red-800 dark:text-red-300 uppercase tracking-wider">
+                  Participant Name
+                </th>
+                <th className="px-4 sm:px-6 py-3.5 text-left font-black text-red-800 dark:text-red-300 uppercase tracking-wider">
+                  Claim Status
+                </th>
+                <th className="px-4 sm:px-6 py-3.5 text-left font-black text-red-800 dark:text-red-300 uppercase tracking-wider">
+                  Wishlist
+                </th>
+                <th className="px-4 sm:px-6 py-3.5 text-right font-black text-red-800 dark:text-red-300 uppercase tracking-wider">
+                  Action
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 bg-white dark:bg-zinc-900">
+              {localParticipants.map((person, idx) => {
+                const isCurrentUser = person.userId === currentUserId;
+                const isClaimed = Boolean(person.claimed || person.userId);
+                const wishlistCount = person.wishlist?.length || 0;
+                const emoji = FESTIVE_EMOJIS[idx % FESTIVE_EMOJIS.length];
 
-      {/* Participants Table */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
-        <table className="min-w-full divide-y divide-zinc-200 dark:divide-zinc-800 text-xs">
-          <thead className="bg-zinc-50 dark:bg-zinc-800/60">
-            <tr>
-              <th className="px-4 py-3 text-left font-bold text-zinc-600 dark:text-zinc-400">Participant</th>
-              <th className="px-4 py-3 text-left font-bold text-zinc-600 dark:text-zinc-400">Wishlist</th>
-              <th className="px-4 py-3 text-left font-bold text-zinc-600 dark:text-zinc-400">Status</th>
-              <th className="px-4 py-3 text-right font-bold text-zinc-600 dark:text-zinc-400">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800 bg-white dark:bg-zinc-900">
-            {localParticipants.map((person) => {
-              const isCurrentUser = person.userId === currentUserId;
-              const wishlistCount = person.wishlist?.length || 0;
-
-              return (
-                <tr key={person.id || person.userId} className={isCurrentUser ? 'bg-amber-50/50 dark:bg-amber-950/20' : undefined}>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="flex items-center gap-2.5">
-                      {person.photoURL ? (
-                        <img
-                          src={person.photoURL}
-                          alt={person.displayName}
-                          className="w-8 h-8 rounded-full object-cover border border-zinc-200 dark:border-zinc-700"
-                        />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-red-800 text-white font-bold flex items-center justify-center text-xs">
-                          {person.displayName ? person.displayName.charAt(0).toUpperCase() : '?'}
-                        </div>
-                      )}
-                      <div>
-                        <div className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                          <span>{person.displayName || 'Anonymous Member'}</span>
-                          {isCurrentUser && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 font-semibold">
-                              You
+                return (
+                  <tr 
+                    key={person.id} 
+                    className={`transition-colors ${
+                      isCurrentUser 
+                        ? 'bg-amber-50/70 dark:bg-amber-950/20 font-medium' 
+                        : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/40'
+                    }`}
+                  >
+                    {/* Name + Avatar */}
+                    <td className="px-4 sm:px-6 py-3.5">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {person.photoURL ? (
+                          <img
+                            src={person.photoURL}
+                            alt={person.displayName}
+                            className="w-9 h-9 rounded-2xl object-cover border-2 border-red-200 dark:border-zinc-700 shadow-2xs shrink-0"
+                          />
+                        ) : (
+                          <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-red-600 to-rose-700 text-white font-black flex items-center justify-center text-sm shadow-2xs shrink-0">
+                            {emoji}
+                          </div>
+                        )}
+                        <div className="min-w-0 max-w-[180px] sm:max-w-[240px]">
+                          <div className="font-black text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5 truncate">
+                            <span className="truncate" title={person.displayName}>
+                              {person.displayName}
+                            </span>
+                            {isCurrentUser && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-200 dark:bg-amber-900/80 text-amber-900 dark:text-amber-200 font-bold shrink-0">
+                                You
+                              </span>
+                            )}
+                            {person.isOrganizer && (
+                              <span title="Organizer / Host">
+                                <Shield className="w-3.5 h-3.5 text-red-600 dark:text-red-400 shrink-0" />
+                              </span>
+                            )}
+                          </div>
+                          {isClaimed && person.email && (
+                            <span className="text-[11px] text-zinc-400 truncate block">
+                              {person.email}
                             </span>
                           )}
-                          {person.isOrganizer && (
-                            <span title="Organizer">
-                              <Shield className="w-3 h-3 text-red-600 dark:text-red-400" />
-                            </span>
-                          )}
                         </div>
-                        <span className="text-[11px] text-zinc-400 dark:text-zinc-500">{person.email}</span>
                       </div>
-                    </div>
-                  </td>
+                    </td>
 
-                  <td className="px-4 py-3 whitespace-nowrap text-zinc-600 dark:text-zinc-400 font-medium">
-                    {wishlistCount} {wishlistCount === 1 ? 'gift idea' : 'gift ideas'}
-                  </td>
-
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    {person.isWishlistReady ? (
-                      <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-semibold">
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Ready 🎁</span>
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400 font-semibold">
-                        <Clock className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Drafting ✍️</span>
-                      </span>
-                    )}
-                  </td>
-
-                  <td className="px-4 py-3 whitespace-nowrap text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      {onViewWishlist && (
-                        <button
-                          onClick={() => {
-                            playClickSound();
-                            onViewWishlist(person);
-                          }}
-                          className="inline-flex items-center gap-1 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
-                        >
-                          <Eye className="w-3 h-3" />
-                          <span>View List</span>
-                        </button>
+                    {/* Claim Status */}
+                    <td className="px-4 sm:px-6 py-3.5">
+                      {isClaimed ? (
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold text-[11px]">
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Claimed</span>
+                        </div>
+                      ) : (
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-bold text-[11px]">
+                          <Clock className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Unclaimed</span>
+                        </div>
                       )}
+                    </td>
 
-                      {/* Participant's own Leave button */}
-                      {isCurrentUser && (
-                        <button
-                          onClick={() => setConfirmLeaveSelf(true)}
-                          className="inline-flex items-center gap-1 text-red-600 dark:text-red-400 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 border border-red-200 dark:border-red-900/60 px-2 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
-                          title="Leave this gift exchange"
-                        >
-                          <LogOut className="w-3 h-3" />
-                          <span>Leave</span>
-                        </button>
-                      )}
+                    {/* Wishlist Status */}
+                    <td className="px-4 sm:px-6 py-3.5 text-zinc-600 dark:text-zinc-400 font-medium">
+                      <div className="flex items-center gap-1.5">
+                        <Gift className="w-3.5 h-3.5 text-red-500" />
+                        <span>{wishlistCount} {wishlistCount === 1 ? 'gift idea' : 'gift ideas'}</span>
+                        {person.isWishlistReady && (
+                          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 ml-1">
+                            (Ready ✓)
+                          </span>
+                        )}
+                      </div>
+                    </td>
 
-                      {/* Organizer Remove participant button (before draw) */}
-                      {isOrganizer && !isDrawn && !isCurrentUser && (
-                        <button
-                          onClick={() => setParticipantToRemove(person)}
-                          className="inline-flex items-center gap-1 text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 border border-zinc-200 dark:border-zinc-700 hover:border-red-300 dark:hover:border-red-800 px-2 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
-                          title={`Remove ${person.displayName} from this exchange`}
-                        >
-                          <UserMinus className="w-3 h-3" />
-                          <span className="hidden sm:inline">Remove</span>
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    {/* Actions */}
+                    <td className="px-4 sm:px-6 py-3.5 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {/* Direct Claim Button if current user has not claimed and this spot is open */}
+                        {!hasClaimed && !isClaimed && (
+                          <button
+                            type="button"
+                            onClick={() => handleDirectClaim(person)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] shadow-2xs transition-transform active:scale-95 cursor-pointer"
+                          >
+                            <Sparkles className="w-3 h-3 text-amber-300" />
+                            <span>I am {person.displayName}</span>
+                          </button>
+                        )}
+
+                        {/* View Wishlist */}
+                        {onViewWishlist && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              playClickSound();
+                              onViewWishlist(person);
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-[11px] font-semibold transition-colors cursor-pointer"
+                            title="View Wishlist & Preferences"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-zinc-500" />
+                            <span className="hidden sm:inline">Wishlist</span>
+                          </button>
+                        )}
+
+                        {/* Organizer: Reset claim */}
+                        {isOrganizer && isClaimed && !person.isOrganizer && !isDrawn && (
+                          <button
+                            type="button"
+                            onClick={() => setParticipantToReset(person)}
+                            className="p-1.5 text-zinc-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                            title="Reset claim so someone else can claim this name"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        {/* Organizer: Remove roster member */}
+                        {isOrganizer && !isDrawn && (
+                          <button
+                            type="button"
+                            onClick={() => setParticipantToRemove(person)}
+                            className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                            title="Remove from roster"
+                          >
+                            <UserMinus className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* Confirmation Modal - Early Draw Unlock Warning */}
-      {showEarlyUnlockModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-xl max-w-sm w-full space-y-4">
-            <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400 flex items-center justify-center">
-              <Unlock className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
-                Unlock Draw Button Early?
+      {/* Modal: Add person to roster */}
+      {showAddRosterModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-red-950/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white dark:bg-zinc-900 border-4 border-red-500 rounded-3xl p-6 shadow-2xl text-zinc-900 dark:text-zinc-100 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-100 dark:border-zinc-800">
+              <h3 className="font-black text-base text-red-700 dark:text-red-400 flex items-center gap-2">
+                <span>🎅 Add Person to Holiday Roster</span>
               </h3>
-              <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 leading-relaxed">
-                <strong className="text-amber-700 dark:text-amber-300 font-semibold">{totalCount - readyCount} participant(s)</strong> have not marked their wishlists as ready yet.
-              </p>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-2 leading-relaxed">
-                If you unlock now, you will be able to draw names immediately. Participants can still edit wishlists after the draw.
-              </p>
-            </div>
-            <div className="flex gap-2 justify-end pt-2">
               <button
                 type="button"
-                onClick={() => setShowEarlyUnlockModal(false)}
-                className="px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-xs font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
+                onClick={() => setShowAddRosterModal(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 cursor-pointer"
               >
-                Keep Waiting
-              </button>
-              <button
-                type="button"
-                disabled={unlockLoading}
-                onClick={() => handleToggleDrawLock(true)}
-                className="px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-xs font-semibold cursor-pointer disabled:opacity-50"
-              >
-                {unlockLoading ? 'Unlocking...' : 'Unlock Anyway'}
+                ✕
               </button>
             </div>
+
+            <form onSubmit={handleAddPersonToRoster} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                  Participant Full Name:
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="e.g. Kuya Mark, Auntie Connie, Chloe..."
+                  value={newRosterName}
+                  onChange={(e) => setNewRosterName(e.target.value)}
+                  className="w-full bg-red-50/50 dark:bg-zinc-800 border-2 border-red-200 dark:border-zinc-700 rounded-2xl px-3.5 py-2.5 text-xs text-zinc-900 dark:text-zinc-100 font-bold focus:outline-none focus:border-red-500"
+                />
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                  Once added, this person can log in with the room code and claim their spot! 🎄
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddRosterModal(false)}
+                  className="px-4 py-2 rounded-2xl border border-zinc-300 text-xs font-bold hover:bg-zinc-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addRosterLoading}
+                  className="px-5 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {addRosterLoading ? 'Adding...' : 'Add to List 🎁'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* Confirmation Modal - Super Random Draw */}
+      {/* Modal: Confirm Draw */}
       {showConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-xl max-w-md w-full space-y-4">
-            <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400 flex items-center justify-center">
-              <Shuffle className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
-                Ready to Draw Secret Santa Names!
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-red-950/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white dark:bg-zinc-900 border-4 border-red-500 rounded-3xl p-6 shadow-2xl text-zinc-900 dark:text-zinc-100 space-y-4">
+            <div className="text-center space-y-2">
+              <span className="text-4xl animate-jiggle inline-block">🎁</span>
+              <h3 className="text-xl font-black text-red-700 dark:text-red-400">
+                Ready to Draw Secret Santas?
               </h3>
-              <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 leading-relaxed">
-                You are about to draw names for <strong className="text-zinc-900 dark:text-zinc-100 font-bold">{totalCount} participants</strong>.
+              <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                Names will be paired randomly without duplicates. Nobody will draw themselves.
+                Once drawn, each participant can scratch to reveal their match!
               </p>
             </div>
 
-            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-700 dark:text-zinc-300 space-y-1.5">
-              <div className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span><strong>No duplicates:</strong> Everyone gives 1 gift and receives 1 gift.</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span><strong>No self-draws:</strong> No one can ever be matched with themselves.</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span><strong>Super random:</strong> Uniform derangement algorithm where every possible valid permutation is equally likely (pairs are possible by chance, never forced).</span>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2.5 pt-3">
               <button
                 type="button"
                 onClick={() => setShowConfirmModal(false)}
-                className="px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-xs font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                className="px-4 py-2.5 rounded-2xl border-2 border-zinc-300 text-xs font-bold hover:bg-zinc-100 cursor-pointer"
               >
-                Cancel
+                Not Yet
               </button>
               <button
                 type="button"
+                onClick={handlePerformDraw}
                 disabled={drawing}
-                onClick={handleExecuteDraw}
-                className="px-4 py-1.5 rounded-lg bg-red-700 hover:bg-red-800 text-white text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                className="px-6 py-2.5 rounded-2xl bg-gradient-to-r from-red-600 to-rose-700 text-white font-black text-xs shadow-lg cursor-pointer disabled:opacity-50"
               >
-                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                <span>{drawing ? 'Drawing Names...' : 'Shuffle & Confirm Draw'}</span>
+                {drawing ? 'Drawing Names...' : '✨ Draw Names Now!'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Confirmation Modal - User Leaving Exchange */}
-      {confirmLeaveSelf && (
+      {/* Modal: Confirm Reset Claim */}
+      {participantToReset && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-xl max-w-sm w-full space-y-4">
-            <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400 flex items-center justify-center">
-              <LogOut className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
-                Leave this Gift Exchange?
-              </h3>
-              <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 leading-relaxed">
-                Your name, wishlist, and participation will be completely removed from &quot;{exchange.title}&quot;. You will not give or receive gifts in this exchange.
-              </p>
-            </div>
-            <div className="flex gap-2 justify-end pt-2">
+          <div className="w-full max-w-sm bg-white dark:bg-zinc-900 border-2 border-amber-300 rounded-3xl p-6 shadow-2xl space-y-4">
+            <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
+              Reset Claim for &quot;{participantToReset.displayName}&quot;?
+            </h3>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              This will unlink the current user account from this spot, making it available for someone else to claim.
+            </p>
+            <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setConfirmLeaveSelf(false)}
-                className="px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-xs font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
+                onClick={() => setParticipantToReset(null)}
+                className="px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
+                onClick={handleResetClaim}
                 disabled={actionLoading}
-                onClick={handleConfirmLeaveSelf}
-                className="px-4 py-1.5 rounded-lg bg-red-700 hover:bg-red-800 text-white text-xs font-semibold cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 rounded-xl bg-amber-600 text-white text-xs font-bold cursor-pointer"
               >
-                {actionLoading ? 'Leaving...' : 'Yes, Leave Exchange'}
+                {actionLoading ? 'Resetting...' : 'Reset Claim'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Confirmation Modal - Organizer Removing Participant */}
+      {/* Modal: Confirm Remove Roster Member */}
       {participantToRemove && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-xl max-w-sm w-full space-y-4">
-            <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400 flex items-center justify-center">
-              <UserMinus className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
-                Remove {participantToRemove.displayName}?
-              </h3>
-              <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 leading-relaxed">
-                This participant and their wishlist will be permanently removed from this gift exchange roster.
-              </p>
-            </div>
-            <div className="flex gap-2 justify-end pt-2">
+          <div className="w-full max-w-sm bg-white dark:bg-zinc-900 border-2 border-red-300 rounded-3xl p-6 shadow-2xl space-y-4">
+            <h3 className="font-bold text-sm text-red-600">
+              Remove &quot;{participantToRemove.displayName}&quot; from Roster?
+            </h3>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Are you sure you want to remove this person from the holiday exchange list?
+            </p>
+            <div className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setParticipantToRemove(null)}
-                className="px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-xs font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
+                className="px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                disabled={actionLoading}
                 onClick={handleConfirmRemoveParticipant}
-                className="px-4 py-1.5 rounded-lg bg-red-700 hover:bg-red-800 text-white text-xs font-semibold cursor-pointer disabled:opacity-50"
+                disabled={actionLoading}
+                className="px-4 py-1.5 rounded-xl bg-red-700 text-white text-xs font-bold cursor-pointer"
               >
-                {actionLoading ? 'Removing...' : 'Remove Participant'}
+                {actionLoading ? 'Removing...' : 'Remove'}
               </button>
             </div>
           </div>
@@ -667,4 +745,3 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
     </div>
   );
 };
-
