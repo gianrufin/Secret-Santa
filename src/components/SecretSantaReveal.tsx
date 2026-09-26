@@ -154,9 +154,16 @@ export const SecretSantaReveal: React.FC<SecretSantaRevealProps> = ({
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <h3 className={`text-xl sm:text-2xl font-black text-red-700 dark:text-red-400 break-words ${hideName ? 'blur-sm select-none' : ''}`}>
-                {hideName ? '••••••••••••' : recipientName}
-              </h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className={`text-xl sm:text-2xl font-black text-red-700 dark:text-red-400 break-words ${hideName ? 'blur-sm select-none' : ''}`}>
+                  {hideName ? '••••••••••••' : recipientName}
+                </h3>
+                {recipient && !recipient.claimed && !hideName && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                    Awaiting Claim ⏳
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5 font-medium">
                 Target budget: <span className="font-bold text-emerald-700 dark:text-emerald-400">{exchange.budget}</span>
               </p>
@@ -203,8 +210,16 @@ export const SecretSantaReveal: React.FC<SecretSantaRevealProps> = ({
           )}
 
           {recipientWishlist.length === 0 ? (
-            <div className="py-8 text-center text-xs text-zinc-400 dark:text-zinc-500">
-              {recipientName} hasn&apos;t added specific items yet. Check their preferences on the right or send an anonymous note below!
+            <div className="py-8 px-4 text-center rounded-2xl bg-amber-50/60 dark:bg-zinc-800/40 border border-dashed border-amber-200 dark:border-zinc-700 space-y-2">
+              <span className="text-2xl block animate-gentle-bounce">🎁</span>
+              <p className="font-bold text-xs text-zinc-700 dark:text-zinc-300">
+                {recipientName} hasn&apos;t added wishlist items yet!
+              </p>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 max-w-xs mx-auto leading-relaxed">
+                {recipient && !recipient.claimed
+                  ? `${recipientName} hasn't claimed their spot yet. They can claim and add gift ideas before the wishlist lock deadline (${exchange.registrationDeadline || 'the party date'})!`
+                  : `Check their preferences on the right or send an anonymous Secret Santa note below!`}
+              </p>
             </div>
           ) : (
             <div className="space-y-2.5">

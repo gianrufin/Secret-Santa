@@ -49,6 +49,13 @@ export const ExchangeHeader: React.FC<ExchangeHeaderProps> = ({
               {isDrawn ? '✓ Secret Santas Drawn! 🎅' : '🎄 Roster Registration & Wishlists Open'}
             </span>
 
+            {!isDrawn && participants.length >= 2 && (
+              <span className="text-xs font-black px-3 py-1 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-2 border-rose-300 dark:border-rose-800 flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                <span>List Ready • Draw Ahead Available! 🎲</span>
+              </span>
+            )}
+
             {isOrganizer && (
               <span className="text-xs font-bold px-3 py-1 rounded-full bg-red-100 dark:bg-zinc-800 text-red-800 dark:text-red-300 border-2 border-red-200 dark:border-zinc-700">
                 Host / Organizer 👑

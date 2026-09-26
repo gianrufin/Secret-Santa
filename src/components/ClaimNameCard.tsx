@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { UserCheck, Sparkles, Check, AlertCircle, Users, ArrowRight } from 'lucide-react';
-import { db, doc, updateDoc, User } from '../firebase';
+import { UserCheck, Sparkles, Check, AlertCircle, Users, ArrowRight, Gift, Lock, Calendar } from 'lucide-react';
+import { db, doc, updateDoc, setDoc, getDocs, collection, User } from '../firebase';
 import { Exchange, Participant } from '../types';
 import { playClickSound, playChimeSound } from '../utils/audio';
 import { fireHolidayConfetti } from '../utils/confetti';
@@ -23,9 +23,15 @@ export const ClaimNameCard: React.FC<ClaimNameCardProps> = ({
   const [selectedPartId, setSelectedPartId] = useState<string>('');
   const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [claimedSuccessPart, setClaimedSuccessPart] = useState<Participant | null>(null);
 
-  const unclaimedParticipants = participants.filter((p) => !p.claimed && !p.userId);
-  const claimedParticipants = participants.filter((p) => p.claimed || p.userId);
+  const unclaimedParticipants = [...participants]
+    .filter((p) => !p.claimed && !p.userId)
+    .sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base', numeric: true }));
+  const claimedParticipants = [...participants]
+    .filter((p) => p.claimed || p.userId)
+    .sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base', numeric: true }));
+  const isDrawn = exchange.status === 'drawn';
 
   const handleClaim = async () => {
     if (!selectedPartId) {
@@ -57,6 +63,55 @@ export const ClaimNameCard: React.FC<ClaimNameCardProps> = ({
 
       await updateDoc(partRef, updates);
 
+      // If Secret Santa was already drawn ahead, seamlessly link the assignment to this user!
+      if (isDrawn) {
+        try {
+          const assignSnapshot = await getDocs(
+            collection(db, 'exchanges', exchange.id, 'assignments')
+          );
+
+          for (const docSnap of assignSnapshot.docs) {
+            const data = docSnap.data();
+
+            // Link when this person is the Santa
+            if (
+              data.santaParticipantId === targetPart.id || 
+              docSnap.id === targetPart.id ||
+              (!data.santaId && data.santaName?.toLowerCase() === targetPart.displayName.toLowerCase())
+            ) {
+              const updatedAssignment = {
+                ...data,
+                santaId: currentUser.uid,
+                santaParticipantId: targetPart.id,
+              };
+
+              // Update the original assignment doc
+              await updateDoc(doc(db, 'exchanges', exchange.id, 'assignments', docSnap.id), {
+                santaId: currentUser.uid,
+              });
+
+              // Also mirror to doc(currentUser.uid) for instant direct lookup
+              await setDoc(
+                doc(db, 'exchanges', exchange.id, 'assignments', currentUser.uid),
+                updatedAssignment
+              );
+            }
+
+            // Link when this person is the recipient
+            if (
+              data.recipientParticipantId === targetPart.id ||
+              (!data.recipientId && data.recipientName?.toLowerCase() === targetPart.displayName.toLowerCase())
+            ) {
+              await updateDoc(doc(db, 'exchanges', exchange.id, 'assignments', docSnap.id), {
+                recipientId: currentUser.uid,
+              });
+            }
+          }
+        } catch (assignErr) {
+          console.error('Error linking drawn-ahead assignment upon claim:', assignErr);
+        }
+      }
+
       const updatedPart: Participant = {
         ...targetPart,
         ...updates,
@@ -64,7 +119,12 @@ export const ClaimNameCard: React.FC<ClaimNameCardProps> = ({
 
       playChimeSound();
       fireHolidayConfetti();
-      onClaimed(updatedPart);
+
+      if (isDrawn) {
+        setClaimedSuccessPart(updatedPart);
+      } else {
+        onClaimed(updatedPart);
+      }
     } catch (err: any) {
       console.error('Error claiming spot:', err);
       setError(err.message || 'Failed to claim spot. Please try again.');
@@ -75,6 +135,43 @@ export const ClaimNameCard: React.FC<ClaimNameCardProps> = ({
 
   const selectedParticipant = participants.find((p) => p.id === selectedPartId);
 
+  // If claimed in a drawn-ahead exchange, show celebratory modal to immediately reveal match!
+  if (claimedSuccessPart && isDrawn) {
+    return (
+      <div className="bg-gradient-to-br from-emerald-50 via-white to-red-50 dark:from-zinc-900 dark:via-zinc-900 dark:to-emerald-950/40 border-4 border-emerald-500 rounded-3xl p-6 sm:p-8 shadow-2xl text-center space-y-4 my-4 animate-gentle-bounce-once">
+        <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-600 dark:text-emerald-300 mx-auto flex items-center justify-center text-3xl shadow-md">
+          🎁
+        </div>
+        <div className="space-y-1">
+          <span className="text-xs font-black px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300">
+            ✓ Spot Successfully Claimed!
+          </span>
+          <h2 className="text-2xl sm:text-3xl font-black text-red-700 dark:text-red-400 mt-2">
+            Welcome, {claimedSuccessPart.displayName}! 🎅
+          </h2>
+          <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-300 max-w-md mx-auto leading-relaxed">
+            Secret Santa names were drawn <strong>ahead of time</strong> — which means your secret gift recipient is 
+            already waiting for you!
+          </p>
+        </div>
+
+        <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              playClickSound();
+              onClaimed(claimedSuccessPart);
+            }}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 text-white font-black text-sm sm:text-base shadow-xl transition-transform active:scale-95 cursor-pointer ring-4 ring-red-200 dark:ring-red-900/50"
+          >
+            <Sparkles className="w-5 h-5 text-amber-300" />
+            <span>✨ Reveal My Secret Santa Recipient! 🎁</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-gradient-to-br from-red-50 via-white to-amber-50 dark:from-zinc-900 dark:via-zinc-900 dark:to-zinc-800 border-4 border-red-400 dark:border-red-600 rounded-3xl p-6 sm:p-8 shadow-xl text-zinc-900 dark:text-zinc-100 my-4 relative overflow-hidden">
       {/* Decorative festive corner sparkles */}
@@ -82,6 +179,24 @@ export const ClaimNameCard: React.FC<ClaimNameCardProps> = ({
       <div className="absolute -bottom-4 -left-4 text-6xl select-none opacity-10">🎅</div>
 
       <div className="max-w-2xl mx-auto space-y-5">
+        {/* Draw Ahead Notification Banner */}
+        {isDrawn && (
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 text-white shadow-md flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl shrink-0">
+              🎁
+            </div>
+            <div className="text-xs space-y-0.5 min-w-0">
+              <span className="font-black text-amber-200 uppercase tracking-wider text-[10px] block">
+                🎅 Secret Santa Drawn Ahead!
+              </span>
+              <p className="font-bold leading-tight">
+                The organizer has already drawn Secret Santa pairs! Once you claim your name below, 
+                you will immediately have your secret person to give gifts to!
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="text-center space-y-1.5">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-300 text-xs font-black uppercase tracking-wider mb-1">
@@ -92,8 +207,15 @@ export const ClaimNameCard: React.FC<ClaimNameCardProps> = ({
           </h2>
           <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 max-w-lg mx-auto leading-relaxed">
             The organizer ({exchange.organizerName}) has set up the guest list for <strong>{exchange.title}</strong>. 
-            Tap your name below to claim your spot and unlock your wishlist!
+            Tap your name below to claim your spot and get your wishlist ready!
           </p>
+
+          {exchange.registrationDeadline && (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs font-bold mt-1">
+              <Lock className="w-3.5 h-3.5 text-amber-600" />
+              <span>Please claim before Wishlist Lock Deadline: {exchange.registrationDeadline}</span>
+            </div>
+          )}
         </div>
 
         {error && (

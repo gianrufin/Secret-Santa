@@ -264,21 +264,22 @@ export default function App() {
   const isDrawn = currentExchange?.status === 'drawn';
   const hasClaimed = Boolean(currentParticipant);
 
-  // Derive assignment
+  // Derive assignment with robust multi-field matching
   const myAssignment = allAssignments.find((a) => {
-    if (a.santaId === user?.uid) return true;
+    if (user?.uid && a.santaId === user.uid) return true;
     if (currentParticipant && a.santaParticipantId === currentParticipant.id) return true;
     if (currentParticipant && a.santaId === currentParticipant.id) return true;
+    if (currentParticipant && a.santaName?.trim().toLowerCase() === currentParticipant.displayName?.trim().toLowerCase()) return true;
     return false;
   }) || null;
 
-  // Derive recipient
+  // Derive recipient with fallback to display name matching
   const recipientParticipant = myAssignment
     ? participants.find((p) => {
         if (myAssignment.recipientParticipantId && p.id === myAssignment.recipientParticipantId) return true;
-        if (p.userId && p.userId === myAssignment.recipientId) return true;
+        if (p.userId && (p.userId === myAssignment.recipientId || p.userId === myAssignment.recipientParticipantId)) return true;
         if (p.id === myAssignment.recipientId) return true;
-        if (p.displayName.toLowerCase() === myAssignment.recipientName.toLowerCase()) return true;
+        if (p.displayName?.trim().toLowerCase() === myAssignment.recipientName?.trim().toLowerCase()) return true;
         return false;
       }) || null
     : null;
@@ -394,7 +395,7 @@ export default function App() {
                 participants={participants}
                 currentUser={user}
                 onClaimed={() => {
-                  setActiveSection('wishlist');
+                  setActiveSection(isDrawn ? 'match' : 'wishlist');
                 }}
               />
             )}
