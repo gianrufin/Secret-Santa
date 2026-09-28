@@ -11,9 +11,10 @@ import {
   Unlock,
   AlertCircle,
   Calendar,
-  Sparkles
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
-import { db, doc, updateDoc } from '../firebase';
+import { db, doc, updateDoc, setDoc } from '../firebase';
 import { Participant, WishlistItem, ParticipantPreferences, getCurrencySymbol } from '../types';
 import { playChimeSound, playClickSound } from '../utils/audio';
 
@@ -34,16 +35,59 @@ export const WishlistEditor: React.FC<WishlistEditorProps> = ({
   currency = 'PHP',
   registrationDeadline,
 }) => {
-  const [wishlist, setWishlist] = useState<WishlistItem[]>(participant.wishlist || []);
-  const [preferences, setPreferences] = useState<ParticipantPreferences>({
-    likes: participant.preferences?.likes || '',
-    dislikes: participant.preferences?.dislikes || '',
-    clothingSize: participant.preferences?.clothingSize || '',
-    notes: participant.preferences?.notes || '',
-  });
+  // Helper for initial wishlist with fallback to local recovery backup
+  const getInitialWishlist = (): WishlistItem[] => {
+    if (participant.wishlist && Array.isArray(participant.wishlist) && participant.wishlist.length > 0) {
+      return participant.wishlist;
+    }
+    try {
+      const backupStr = localStorage.getItem(`backup_wishlist_${exchangeId}_${participant.id}`);
+      if (backupStr) {
+        const backup = JSON.parse(backupStr);
+        if (backup && Array.isArray(backup.wishlist) && backup.wishlist.length > 0) {
+          return backup.wishlist;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+    return [];
+  };
+
+  const getInitialPreferences = (): ParticipantPreferences => {
+    if (participant.preferences) {
+      return {
+        likes: participant.preferences.likes || '',
+        dislikes: participant.preferences.dislikes || '',
+        clothingSize: participant.preferences.clothingSize || '',
+        notes: participant.preferences.notes || '',
+      };
+    }
+    try {
+      const backupStr = localStorage.getItem(`backup_wishlist_${exchangeId}_${participant.id}`);
+      if (backupStr) {
+        const backup = JSON.parse(backupStr);
+        if (backup && backup.preferences) {
+          return {
+            likes: backup.preferences.likes || '',
+            dislikes: backup.preferences.dislikes || '',
+            clothingSize: backup.preferences.clothingSize || '',
+            notes: backup.preferences.notes || '',
+          };
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+    return { likes: '', dislikes: '', clothingSize: '', notes: '' };
+  };
+
+  const [wishlist, setWishlist] = useState<WishlistItem[]>(getInitialWishlist);
+  const [preferences, setPreferences] = useState<ParticipantPreferences>(getInitialPreferences);
   const [isReady, setIsReady] = useState<boolean>(participant.isWishlistReady || false);
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const currencySym = getCurrencySymbol(currency);
 
@@ -76,18 +120,23 @@ export const WishlistEditor: React.FC<WishlistEditorProps> = ({
 
   const deadlineStatus = getDeadlineStatus();
 
+  // Sync state when participant data updates from Firestore
   useEffect(() => {
-    if (participant) {
-      setWishlist(participant.wishlist || []);
-      setPreferences({
-        likes: participant.preferences?.likes || '',
-        dislikes: participant.preferences?.dislikes || '',
-        clothingSize: participant.preferences?.clothingSize || '',
-        notes: participant.preferences?.notes || '',
-      });
-      setIsReady(participant.isWishlistReady || false);
+    if (!participant) return;
+
+    if (Array.isArray(participant.wishlist)) {
+      setWishlist(participant.wishlist);
     }
-  }, [participant.id]);
+    if (participant.preferences) {
+      setPreferences({
+        likes: participant.preferences.likes || '',
+        dislikes: participant.preferences.dislikes || '',
+        clothingSize: participant.preferences.clothingSize || '',
+        notes: participant.preferences.notes || '',
+      });
+    }
+    setIsReady(Boolean(participant.isWishlistReady));
+  }, [participant.id, JSON.stringify(participant.wishlist), JSON.stringify(participant.preferences), participant.isWishlistReady]);
 
   const handleAddItem = (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,12 +148,13 @@ export const WishlistEditor: React.FC<WishlistEditorProps> = ({
       formattedPrice = `${currencySym}${formattedPrice}`;
     }
 
+    // Always sanitize each property to a clean string, avoiding undefined values
     const newItem: WishlistItem = {
       id: 'item_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6),
       title: itemTitle.trim(),
-      price: formattedPrice || undefined,
-      url: itemUrl.trim() || undefined,
-      notes: itemNotes.trim() || undefined,
+      price: formattedPrice || '',
+      url: itemUrl.trim() || '',
+      notes: itemNotes.trim() || '',
     };
 
     const updatedList = [...wishlist, newItem];
@@ -145,16 +195,52 @@ export const WishlistEditor: React.FC<WishlistEditorProps> = ({
   ) => {
     try {
       setSaving(true);
+      setSaveError(null);
+
+      // Clean every item so NO field is ever undefined or null
+      const sanitizedWishlist: WishlistItem[] = currentList.map((item) => ({
+        id: item.id || 'item_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6),
+        title: (item.title || '').trim(),
+        price: (item.price || '').trim(),
+        url: (item.url || '').trim(),
+        notes: (item.notes || '').trim(),
+      }));
+
+      const sanitizedPrefs: ParticipantPreferences = {
+        likes: (currentPrefs.likes || '').trim(),
+        dislikes: (currentPrefs.dislikes || '').trim(),
+        clothingSize: (currentPrefs.clothingSize || '').trim(),
+        notes: (currentPrefs.notes || '').trim(),
+      };
+
       const participantRef = doc(db, 'exchanges', exchangeId, 'participants', participant.id);
-      await updateDoc(participantRef, {
-        wishlist: currentList,
-        preferences: currentPrefs,
+      
+      // Use setDoc with merge: true to guarantee persistence even with partial docs
+      await setDoc(participantRef, {
+        wishlist: sanitizedWishlist,
+        preferences: sanitizedPrefs,
         isWishlistReady: currentReady,
-      });
+      }, { merge: true });
+
+      // Cache recovery copy in localStorage
+      try {
+        localStorage.setItem(
+          `backup_wishlist_${exchangeId}_${participant.id}`,
+          JSON.stringify({
+            wishlist: sanitizedWishlist,
+            preferences: sanitizedPrefs,
+            isWishlistReady: currentReady,
+          })
+        );
+      } catch (e) {
+        // ignore storage errors
+      }
+
       setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 2000);
-    } catch (err) {
+      setTimeout(() => setSavedSuccess(false), 2500);
+    } catch (err: any) {
       console.error('Failed to save wishlist:', err);
+      setSaveError(err.message || 'Failed to save to database. Please check connection and retry.');
     } finally {
       setSaving(false);
     }
@@ -168,6 +254,27 @@ export const WishlistEditor: React.FC<WishlistEditorProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Save Error Notice with Retry */}
+      {saveError && (
+        <div className="p-4 rounded-2xl bg-red-100 dark:bg-red-950/80 border-2 border-red-300 dark:border-red-800 text-red-900 dark:text-red-200 text-xs font-bold flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md animate-shake">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
+            <div>
+              <p className="font-black text-sm">Save Alert</p>
+              <p className="text-[11px] font-medium">{saveError}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => saveToFirebase(wishlist, preferences, isReady)}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black shadow-xs cursor-pointer flex items-center gap-1.5 shrink-0"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Try Saving Again</span>
+          </button>
+        </div>
+      )}
+
       {/* 1. Dedicated Registration & Wishlist Lock Deadline Banner */}
       {registrationDeadline && (
         <div 
@@ -359,10 +466,11 @@ export const WishlistEditor: React.FC<WishlistEditorProps> = ({
               <div className="flex justify-end pt-1">
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-700 hover:bg-red-800 text-white text-xs font-semibold cursor-pointer shadow-xs transition-colors"
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-700 hover:bg-red-800 text-white text-xs font-semibold cursor-pointer shadow-xs transition-colors disabled:opacity-60"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Add Item</span>
+                  <span>{saving ? 'Adding & Saving...' : 'Add Item'}</span>
                 </button>
               </div>
             </form>
@@ -527,10 +635,10 @@ export const WishlistEditor: React.FC<WishlistEditorProps> = ({
                   type="button"
                   onClick={handleSavePreferences}
                   disabled={saving}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 text-xs font-semibold cursor-pointer transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 text-xs font-semibold cursor-pointer transition-colors disabled:opacity-60"
                 >
                   <Save className="w-3.5 h-3.5" />
-                  <span>Save Helper Profile</span>
+                  <span>{saving ? 'Saving...' : 'Save Helper Profile'}</span>
                 </button>
 
                 {savedSuccess && (

@@ -284,13 +284,6 @@ export default function App() {
       }) || null
     : null;
 
-  // Auto switch to match tab if just drawn and has assignment
-  useEffect(() => {
-    if (isDrawn && myAssignment && activeSection === 'wishlist') {
-      setActiveSection('match');
-    }
-  }, [isDrawn, myAssignment]);
-
   if (authLoading || (user && exchangesLoading && !currentExchange)) {
     return <AppSkeleton />;
   }
